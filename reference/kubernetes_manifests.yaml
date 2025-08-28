@@ -1,0 +1,844 @@
+# Credit Card Processor - Kubernetes Deployment Manifests
+# Enterprise-grade deployment configuration for AKS
+
+---
+# ========================================
+# 1. NAMESPACE & RBAC
+# ========================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: credit-card-processor
+  labels:
+    app: credit-card-processor
+    environment: production
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: credit-card-processor-sa
+  namespace: credit-card-processor
+  annotations:
+    azure.workload.identity/client-id: "your-managed-identity-client-id"
+
+---
+# ========================================
+# 2. CONFIGMAPS & SECRETS
+# ========================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: credit-card-processor
+data:
+  ENVIRONMENT: "production"
+  API_BASE_URL: "https://api.creditcardprocessor.com"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  DATABASE_HOST: "postgres-service"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "credit_card_processor"
+  CELERY_BROKER_URL: "redis://redis-service:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis-service:6379/0"
+  DOC_INTELLIGENCE_ENDPOINT: "https://iius-doc-intelligence.cognitiveservices.azure.com/"
+  STORAGE_ACCOUNT_NAME: "cssa915121f46f2ae0d374e7"
+  STORAGE_CONTAINER_NAME: "credit-card-processor"
+  MAX_FILE_SIZE_MB: "100"
+  SESSION_TIMEOUT_MINUTES: "30"
+  LOG_LEVEL: "INFO"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: credit-card-processor
+type: Opaque
+stringData:
+  DATABASE_PASSWORD: "changeme"  # Should use Azure Key Vault CSI driver
+  REDIS_PASSWORD: "changeme"
+  JWT_SECRET_KEY: "changeme"
+  AZURE_TENANT_ID: "your-tenant-id"
+  AZURE_CLIENT_ID: "your-client-id"
+  AZURE_CLIENT_SECRET: "changeme"
+
+---
+# Azure Key Vault Secret Provider Class
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: azure-keyvault-secrets
+  namespace: credit-card-processor
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "true"
+    userAssignedIdentityID: "dev-aks-uami"
+    keyvaultName: "iius-akv"
+    objects: |
+      array:
+        - |
+          objectName: database-connection-string
+          objectType: secret
+        - |
+          objectName: doc-intelligence-api-key
+          objectType: secret
+        - |
+          objectName: storage-account-key
+          objectType: secret
+        - |
+          objectName: jwt-secret-key
+          objectType: secret
+        - |
+          objectName: azure-client-secret
+          objectType: secret
+    tenantId: "your-tenant-id"
+
+---
+# ========================================
+# 3. POSTGRESQL DATABASE
+# ========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: credit-card-processor
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: credit-card-processor
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_DB
+          value: credit_card_processor
+        - name: POSTGRES_USER
+          value: ccprocessor
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DATABASE_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - ccprocessor
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - ccprocessor
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed-csi
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+# ========================================
+# 4. REDIS CACHE
+# ========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: credit-card-processor
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: credit-card-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command:
+        - redis-server
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        - --maxmemory
+        - 512mb
+        - --maxmemory-policy
+        - allkeys-lru
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: REDIS_PASSWORD
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# ========================================
+# 5. FASTAPI BACKEND SERVICE
+# ========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: credit-card-processor
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: credit-card-processor
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: v1
+    spec:
+      serviceAccountName: credit-card-processor-sa
+      containers:
+      - name: backend
+        image: iiusacr.azurecr.io/credit-card-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: ENVIRONMENT
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_HOST
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_PORT
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_NAME
+        - name: DATABASE_USER
+          value: ccprocessor
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DATABASE_PASSWORD
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: REDIS_PORT
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: REDIS_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        volumeMounts:
+        - name: secrets-store
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: azure-keyvault-secrets
+
+---
+# ========================================
+# 6. CELERY WORKERS
+# ========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: credit-card-processor
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      serviceAccountName: credit-card-processor-sa
+      containers:
+      - name: celery-worker
+        image: iiusacr.azurecr.io/credit-card-processor:latest
+        command: ["celery", "-A", "pdf_processing_pipeline", "worker", "--loglevel=info", "--concurrency=2"]
+        env:
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: CELERY_BROKER_URL
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: CELERY_RESULT_BACKEND
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: REDIS_PASSWORD
+        - name: DOC_INTELLIGENCE_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DOC_INTELLIGENCE_ENDPOINT
+        - name: STORAGE_ACCOUNT_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: STORAGE_ACCOUNT_NAME
+        volumeMounts:
+        - name: secrets-store
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: azure-keyvault-secrets
+
+---
+# ========================================
+# 7. CELERY BEAT SCHEDULER
+# ========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: credit-card-processor
+spec:
+  replicas: 1  # Only one beat scheduler should run
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      serviceAccountName: credit-card-processor-sa
+      containers:
+      - name: celery-beat
+        image: iiusacr.azurecr.io/credit-card-processor:latest
+        command: ["celery", "-A", "pdf_processing_pipeline", "beat", "--loglevel=info"]
+        env:
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: CELERY_BROKER_URL
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: REDIS_PASSWORD
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+
+---
+# ========================================
+# 8. FRONTEND (REACT)
+# ========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: credit-card-processor
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: credit-card-processor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: iiusacr.azurecr.io/credit-card-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        env:
+        - name: REACT_APP_API_URL
+          value: "https://api.creditcardprocessor.com"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# ========================================
+# 9. INGRESS CONFIGURATION
+# ========================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: credit-card-processor-ingress
+  namespace: credit-card-processor
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type"
+spec:
+  tls:
+  - hosts:
+    - creditcardprocessor.com
+    - api.creditcardprocessor.com
+    secretName: credit-card-processor-tls
+  rules:
+  - host: creditcardprocessor.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  - host: api.creditcardprocessor.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+
+---
+# ========================================
+# 10. HORIZONTAL POD AUTOSCALER
+# ========================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: credit-card-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: celery-worker-hpa
+  namespace: credit-card-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: celery-worker
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+
+---
+# ========================================
+# 11. NETWORK POLICIES
+# ========================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+  namespace: credit-card-processor
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - namespaceSelector: {}
+      podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443  # For external APIs
+
+---
+# ========================================
+# 12. POD DISRUPTION BUDGETS
+# ========================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-pdb
+  namespace: credit-card-processor
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: celery-worker-pdb
+  namespace: credit-card-processor
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: celery-worker
+
+---
+# ========================================
+# 13. MONITORING & PROMETHEUS
+# ========================================
+
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: backend-metrics
+  namespace: credit-card-processor
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+
+---
+# ========================================
+# 14. JOBS FOR DATABASE MIGRATION
+# ========================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-migration
+  namespace: credit-card-processor
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: credit-card-processor-sa
+      containers:
+      - name: migration
+        image: iiusacr.azurecr.io/credit-card-backend:latest
+        command: ["python", "-m", "alembic", "upgrade", "head"]
+        env:
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_HOST
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_PORT
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_NAME
+        - name: DATABASE_USER
+          value: ccprocessor
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DATABASE_PASSWORD
+
+---
+# ========================================
+# 15. CRONJOB FOR CLEANUP
+# ========================================
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup-old-data
+  namespace: credit-card-processor
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: credit-card-processor-sa
+          containers:
+          - name: cleanup
+            image: iiusacr.azurecr.io/credit-card-backend:latest
+            command: ["python", "-m", "scripts.cleanup_old_data"]
+            env:
+            - name: DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DATABASE_HOST
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DATABASE_PASSWORD
