@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(xcopy:*)",
-      "Bash(robocopy:*)"
+      "Bash(robocopy:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []
