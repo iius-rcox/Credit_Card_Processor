@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcopy:*)",
+      "Bash(robocopy:*)",
+      "Bash(gh repo create:*)",
+      "Bash(winget:*)",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" --version)",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" repo create Credit_Card_Processor --public --description \"A Python application for processing credit card statements and expense management\")",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" auth login)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
