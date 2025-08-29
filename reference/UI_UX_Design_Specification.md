@@ -686,9 +686,9 @@ End: All issues managed without leaving page
 **Technology Stack:**
 - **Framework**: Vite + Vue 3 Composition API (lightweight, modern)
 - **Styling**: Tailwind CSS with custom component classes
-- **State Management**: Local component state only (no Vuex)
+- **State Management**: Pinia (single source of truth for shared state)
 - **HTTP Client**: Native Fetch API with async/await
-- **Progress Updates**: Server-Sent Events (SSE) for real-time feedback
+- **Progress Updates**: Status polling every 5 seconds for real-time feedback
 - **Build**: Single Vite build command, outputs static files
 - **Testing**: Vitest + Vue Testing Library
 
@@ -699,7 +699,7 @@ frontend/
 │   ├── components/
 │   │   ├── core/
 │   │   │   ├── FileUpload.vue      # Drag-drop with backend integration
-│   │   │   ├── ProgressTracker.vue # SSE-powered real-time updates
+│   │   │   ├── ProgressTracker.vue # Polling-powered real-time updates
 │   │   │   ├── SessionSetup.vue    # Session configuration with delta detection
 │   │   │   └── ResultsDisplay.vue  # Smart grouping and export actions
 │   │   ├── shared/
@@ -714,10 +714,12 @@ frontend/
 │   ├── composables/
 │   │   ├── useApi.js              # Centralized API communication
 │   │   ├── useFileUpload.js       # File handling with validation
-│   │   ├── useProgressTracking.js # SSE progress management
+│   │   ├── useProgressTracking.js # Status polling progress management
 │   │   ├── useAuth.js             # Windows auth integration
 │   │   ├── useSessionManagement.js # Session CRUD operations
 │   │   └── useResultsProcessing.js # Results grouping logic
+│   ├── stores/
+│   │   └── session.js            # Pinia store for session state management
 │   ├── services/
 │   │   ├── api/
 │   │   │   ├── sessions.js        # Session API endpoints
@@ -725,7 +727,6 @@ frontend/
 │   │   │   ├── processing.js      # Processing control
 │   │   │   ├── results.js         # Results and exports
 │   │   │   └── admin.js          # Admin endpoints
-│   │   ├── sse.js                # Server-Sent Events handling
 │   │   ├── validation.js         # Client-side validation
 │   │   └── storage.js            # Local storage management
 │   ├── utils/
@@ -938,7 +939,7 @@ const startProcessing = async () => {
 </script>
 ```
 
-#### 9.2.2 ProgressTracker.vue - Real-Time SSE Integration
+#### 9.2.2 ProgressTracker.vue - Real-Time Status Polling
 ```vue
 <template>
   <div class="progress-tracker" v-if="sessionId">
@@ -1058,7 +1059,7 @@ const props = defineProps({
 
 const emit = defineEmits(['processing-complete', 'processing-error', 'view-results'])
 
-// Use composable for SSE integration
+// Use composable for polling integration
 const {
   progress,
   currentEmployee,
@@ -1131,13 +1132,13 @@ const viewResults = () => {
 </script>
 ```
 
-### 9.3 Real-Time Updates with Server-Sent Events
+### 9.3 Real-Time Updates with Status Polling
 
-**SSE Implementation Pattern:**
+**Polling Implementation Pattern (Required by Frontend Plan):**
 
 ```javascript
 // composables/useProgressTracking.js
-import { ref, reactive, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 
 export function useProgressTracking(sessionId) {
   const progress = ref({
@@ -1153,78 +1154,88 @@ export function useProgressTracking(sessionId) {
   
   const currentEmployee = ref(null)
   const recentActivities = ref([])
-  const connectionStatus = ref('disconnected')
+  const pollingActive = ref(false)
   
-  let eventSource = null
-  let reconnectAttempts = 0
-  const maxReconnectAttempts = 5
+  let pollingInterval = null
   
   const startTracking = () => {
-    if (!sessionId) return
+    if (!sessionId || pollingActive.value) return
     
-    // Close existing connection
-    stopTracking()
+    pollingActive.value = true
     
-    // Create new EventSource connection
-    eventSource = new EventSource(`/api/progress/${sessionId}`)
-    connectionStatus.value = 'connecting'
-    
-    eventSource.onopen = () => {
-      connectionStatus.value = 'connected'
-      reconnectAttempts = 0
-      console.log(`SSE connected for session: ${sessionId}`)
-    }
-    
-    eventSource.onmessage = (event) => {
+    // Poll every 5 seconds as required by Frontend Plan
+    pollingInterval = setInterval(async () => {
       try {
-        const data = JSON.parse(event.data)
+        const response = await fetch(`/api/sessions/${sessionId}/status`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch status')
+        }
+        
+        const data = await response.json()
         handleProgressUpdate(data)
+        
+        // Stop polling when processing is complete or failed
+        if (data.status === 'completed' || data.status === 'failed') {
+          stopTracking()
+        }
       } catch (error) {
-        console.error('Error parsing SSE data:', error)
+        console.error('Error polling status:', error)
+        // Continue polling on error, retry after 5 seconds
       }
-    }
+    }, 5000) // 5 second polling interval
     
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error)
-      connectionStatus.value = 'error'
-      
-      // Attempt to reconnect
-      if (reconnectAttempts < maxReconnectAttempts) {
-        reconnectAttempts++
-        setTimeout(() => {
-          console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})`)
-          startTracking()
-        }, 2000 * reconnectAttempts) // Exponential backoff
+    // Initial status fetch
+    fetchCurrentStatus()
+  }
+  
+  const fetchCurrentStatus = async () => {
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/status`)
+      if (response.ok) {
+        const data = await response.json()
+        handleProgressUpdate(data)
       }
+    } catch (error) {
+      console.error('Error fetching initial status:', error)
     }
   }
   
   const stopTracking = () => {
-    if (eventSource) {
-      eventSource.close()
-      eventSource = null
-      connectionStatus.value = 'disconnected'
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
     }
+    pollingActive.value = false
   }
   
   const handleProgressUpdate = (data) => {
     // Update overall progress
     progress.value = {
       ...progress.value,
-      ...data.progress
+      status: data.status,
+      completed: data.current_employee || 0,
+      total: data.total_employees || 0,
+      percentComplete: data.percent_complete || 0,
+      estimatedTimeRemaining: data.estimated_time_remaining,
+      hasResults: data.status === 'completed'
     }
     
     // Update current employee
-    if (data.currentEmployee) {
-      currentEmployee.value = data.currentEmployee
+    if (data.current_employee_name) {
+      currentEmployee.value = {
+        name: data.current_employee_name,
+        id: data.current_employee_id,
+        status: data.status
+      }
     }
     
-    // Add new activities
-    if (data.activity) {
+    // Add status message to activities
+    if (data.message && data.message !== recentActivities.value[0]?.message) {
       recentActivities.value.unshift({
         id: Date.now(),
-        ...data.activity,
-        timestamp: new Date()
+        message: data.message,
+        timestamp: new Date(),
+        type: data.status
       })
       
       // Keep only recent 10 activities
@@ -1234,17 +1245,14 @@ export function useProgressTracking(sessionId) {
     }
     
     // Handle completion
-    if (data.progress.status === 'completed') {
-      progress.value.hasResults = true
+    if (data.status === 'completed') {
       currentEmployee.value = null
-      
-      // Show completion notification
       showNotification('Processing completed successfully!', 'success')
     }
     
     // Handle errors
-    if (data.progress.status === 'failed') {
-      showNotification(`Processing failed: ${data.error}`, 'error')
+    if (data.status === 'failed') {
+      showNotification(`Processing failed: ${data.error || 'Unknown error'}`, 'error')
     }
   }
   
@@ -1284,13 +1292,27 @@ export function useProgressTracking(sessionId) {
     progress,
     currentEmployee,
     recentActivities,
-    connectionStatus,
+    pollingActive,
     startTracking,
     stopTracking,
     pauseProcessing,
     cancelProcessing
   }
 }
+
+// Status response format from backend
+/*
+{
+  "status": "processing|completed|failed", 
+  "current_employee": 23,
+  "total_employees": 45,
+  "current_employee_name": "John Smith",
+  "current_employee_id": "EMP001",
+  "message": "Processing employee: John Smith",
+  "percent_complete": 51,
+  "estimated_time_remaining": 120
+}
+*/
 
 // utils/notifications.js
 function showNotification(message, type = 'info') {
@@ -1741,27 +1763,37 @@ export function useResultsProcessing(sessionId) {
 
 **Implementation Pattern:**
 ```javascript
-// Vue 3 Composable for progress tracking
+// Vue 3 Composable for progress tracking (Polling Implementation)
 import { ref, onMounted, onUnmounted } from 'vue'
 
 export function useProcessingProgress(sessionId) {
   const progress = ref(null)
-  let eventSource = null
+  let pollingInterval = null
   
-  const startListening = () => {
-    eventSource = new EventSource(`/api/progress/${sessionId}`)
-    
-    eventSource.onmessage = (event) => {
-      progress.value = JSON.parse(event.data)
-    }
-    
-    eventSource.onerror = () => {
-      console.log('Connection lost, will retry...')
+  const startPolling = () => {
+    // Poll every 5 seconds as required by Frontend Plan
+    pollingInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/status`)
+        if (response.ok) {
+          const data = await response.json()
+          progress.value = data
+        }
+      } catch (error) {
+        console.error('Polling error:', error)
+      }
+    }, 5000)
+  }
+  
+  const stopPolling = () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
     }
   }
   
-  onMounted(startListening)
-  onUnmounted(() => eventSource?.close())
+  onMounted(startPolling)
+  onUnmounted(stopPolling)
   
   return { progress }
 }
@@ -1778,8 +1810,8 @@ export function useProcessingProgress(sessionId) {
 **Data Management:**
 - Simple fetch API with error handling
 - Optimistic UI updates for better perceived performance
-- Local component state with Vue 3 reactivity
-- Minimal caching for processing status
+- Pinia store as single source of truth for shared state
+- Status polling every 5 seconds for real-time updates
 
 **Asset Strategy:**
 - SVG icons for scalability
@@ -1894,7 +1926,7 @@ export const useWindowsAuth = () => {
 ### 11.1 Phase 1: Core Interface (Weeks 1-4)
 
 **Sprint 1 (Weeks 1-2): Foundation**
-- Set up React + TypeScript + MUI project structure
+- Set up Vue 3 + Vite + Pinia + Tailwind CSS project structure
 - Implement Windows username authentication
 - Create single-page layout with progressive sections
 - Build session setup section
