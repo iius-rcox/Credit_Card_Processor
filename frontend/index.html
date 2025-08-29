@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Credit Card Processor</title>
+    <meta
+      name="description"
+      content="Upload and process credit card data from PDF documents efficiently."
+    />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+
+    <!-- Preconnect to fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Meta tags for PWA (future) -->
+    <meta name="theme-color" content="#3b82f6" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Credit Card Processor" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Loading fallback -->
+      <div class="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div class="text-center">
+          <div
+            class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"
+          ></div>
+          <p class="text-gray-600 mt-4">Loading Credit Card Processor...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vue app entry -->
+    <script type="module" src="/src/main.js"></script>
+
+    <!-- No-script fallback -->
+    <noscript>
+      <div
+        style="
+          text-align: center;
+          padding: 50px;
+          font-family: system-ui, sans-serif;
+        "
+      >
+        <h1>JavaScript Required</h1>
+        <p>
+          This application requires JavaScript to function properly. Please
+          enable JavaScript in your browser.
+        </p>
+      </div>
+    </noscript>
+  </body>
+</html>
