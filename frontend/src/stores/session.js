@@ -1,0 +1,1 @@
+// Pinia store for session state
