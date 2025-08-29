@@ -1,0 +1,30 @@
+# FastAPI and web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database
+sqlalchemy==2.0.23
+sqlite-utils==3.35.2
+
+# Data validation and serialization
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# File handling
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# Azure Document Intelligence
+azure-ai-documentintelligence==1.0.0b1
+azure-core==1.29.5
+
+# Data processing and export
+pandas==2.1.4
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Async and background tasks
+asyncio-throttle==1.0.2
+
+# Utilities
+python-dateutil==2.8.2
