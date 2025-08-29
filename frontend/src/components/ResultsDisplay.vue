@@ -1,0 +1,1 @@
+<!-- Results display component -->
