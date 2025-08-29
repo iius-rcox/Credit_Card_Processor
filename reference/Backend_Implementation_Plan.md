@@ -1,70 +1,105 @@
-# Credit Card Processor - Backend Implementation Plan
+# Credit Card Processor - Rectified Backend Implementation Plan
 
 ## Executive Summary
 
-This comprehensive backend implementation plan addresses critical issues found in the historic codebase and provides a detailed roadmap for building a robust FastAPI backend that integrates seamlessly with the Vue.js frontend and existing Azure infrastructure.
+This rectified backend implementation plan addresses the critical architectural and integration issues identified in the previous analysis and provides a fully aligned solution that integrates seamlessly with the Frontend Implementation Plan requirements and UI/UX specifications.
 
-## Major Issues Identified in Historic Code
+## Critical Issues Identified & Resolution Status
 
-### 1. **Database Schema Issues (database_schema.sql:13)**
-- **Critical Error**: Missing quote in enum definition: `'processor', reviewer'` should be `'processor', 'reviewer'`
-- This syntax error would prevent database creation entirely
+### 1. **Real-Time Updates Conflict - RESOLVED**
+- **Issue**: Backend Plan proposed Server-Sent Events (SSE) but Frontend Plan requires simple polling every 5 seconds
+- **Resolution**: Implement status polling endpoints that align with Frontend Plan requirements
 
-### 2. **API Specification Issues (backend_api_specification.py)**
-- Line 214: Deprecated `regex` parameter should be `pattern`
-- Line 623: Missing import for `ValidationError` from `pydantic`
-- Many placeholder functions with `pass` - incomplete implementation
+### 2. **API Endpoint Misalignment - RESOLVED**
+- **Issue**: Backend endpoints don't match Frontend Plan's required API structure
+- **Resolution**: Redesign API endpoints to match exact Frontend requirements from rules.md
 
-### 3. **Security Implementation Gaps (security_layer.py)**
-- Functions like `get_database()` and `get_redis()` are incomplete (lines 756-765)
-- Missing actual Azure AD token validation logic
-- Placeholder implementations throughout
+### 3. **Missing Session Management - RESOLVED**
+- **Issue**: No dedicated session creation/management endpoints separate from file upload
+- **Resolution**: Implement complete session lifecycle management with separate endpoints
 
-### 4. **Processing Pipeline Complexity (pdf_processing_pipeline.py)**
-- Overly complex architecture with Celery, Redis, and async processing
-- Potential issues with PDF splitting and page range calculations
-- Complex error handling that could fail silently
+### 4. **Delta Recognition Missing - RESOLVED**  
+- **Issue**: No file comparison or change detection logic
+- **Resolution**: Add comprehensive delta recognition system with file checksums and comparison
 
-## Comprehensive Backend Implementation Plan
+### 5. **Processing Control Missing - RESOLVED**
+- **Issue**: No pause, cancel, resume functionality
+- **Resolution**: Implement full processing control with state management
 
-### Phase 1: Simplified Backend Architecture (Weeks 1-2)
+### 6. **Issue Resolution Workflow Missing - RESOLVED**
+- **Issue**: No APIs for managing and resolving employee issues
+- **Resolution**: Add complete issue management and resolution workflow
 
-#### **Core API Structure**
+### 7. **Progressive Disclosure Support Insufficient - RESOLVED**
+- **Issue**: APIs don't support UI section state management
+- **Resolution**: Design APIs specifically to enable progressive UI disclosure patterns
+
+## Rectified Backend Implementation Plan
+
+### Core Architecture Decisions
+
+**API Design Philosophy**: Contract-first design aligned with Frontend Plan requirements
+**Real-Time Updates**: Status polling every 5 seconds (NOT Server-Sent Events)  
+**Session Management**: Separate session creation from file upload for better UX flow
+**Progressive Disclosure**: APIs designed to support UI section-by-section reveal
+**Delta Recognition**: Built-in file comparison and change detection
+
+### Phase 1: Aligned API Structure (Weeks 1-2)
+
+#### **Aligned API Endpoints (Frontend Plan Requirements)**
+
+**Required Endpoints from Frontend Implementation Plan:**
 ```python
-# main.py - Corrected FastAPI Application
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks
+# EXACT API structure required by Frontend Plan (rules.md)
+POST /api/sessions           # Create session (separate from upload)
+GET  /api/sessions/{id}      # Get session details  
+POST /api/sessions/{id}/upload    # Upload files to existing session
+GET  /api/sessions/{id}/status    # Status polling (every 5 seconds)
+GET  /api/sessions/{id}/results   # Get processing results
+POST /api/sessions/{id}/export    # Generate export files
+
+# Additional endpoints for missing functionality
+POST /api/sessions/detect-delta   # Delta recognition
+POST /api/sessions/{id}/pause     # Processing control
+POST /api/sessions/{id}/cancel    # Processing control
+POST /api/sessions/{id}/resume    # Processing control
+POST /api/results/{id}/employees/{emp_id}/resolve  # Issue resolution
+```
+
+#### **Core FastAPI Application Structure**
+```python
+# main.py - Aligned FastAPI Application
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
-from sqlalchemy import create_engine, Column, String, DateTime, Integer, Text, Decimal
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-import asyncio
-import json
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 import hashlib
+import uuid
 import os
 
 app = FastAPI(title="Credit Card Processor", version="2.0.0")
 
-# Fixed CORS configuration
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure for your domain
+    allow_origins=["*"],  # Configure for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 ```
 
-#### **Corrected Database Models**
+#### **Enhanced Database Models for Full Feature Support**
 ```python
-# models.py - Fixed SQLAlchemy Models
-from sqlalchemy import Column, String, DateTime, Integer, Text, Decimal, ForeignKey
+# models.py - Enhanced Models Supporting All Features
+from sqlalchemy import Column, String, DateTime, Integer, Text, Decimal, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import json
 
 Base = declarative_base()
 
@@ -74,19 +109,39 @@ class ProcessingSession(Base):
     session_id = Column(String, primary_key=True)
     username = Column(String, nullable=False)
     session_name = Column(String, nullable=False)
-    status = Column(String, default="processing")
+    description = Column(Text)
+    status = Column(String, default="created")  # created, processing, paused, completed, failed, cancelled
+    processing_config = Column(Text)  # JSON string for processing options
+    
+    # File information
     car_file_path = Column(String)
     receipt_file_path = Column(String)
     car_file_checksum = Column(String)
     receipt_file_checksum = Column(String)
+    
+    # Progress tracking
     total_employees = Column(Integer, default=0)
     completed_employees = Column(Integer, default=0)
+    processing_employees = Column(Integer, default=0)
+    issues_employees = Column(Integer, default=0)
+    pending_employees = Column(Integer, default=0)
+    current_employee_name = Column(String)
+    estimated_time_remaining = Column(Integer)  # seconds
+    
+    # Delta recognition
     parent_session_id = Column(String, ForeignKey("processing_sessions.session_id"))
     revision_number = Column(Integer, default=1)
+    is_delta_session = Column(Boolean, default=False)
+    delta_info = Column(Text)  # JSON: {"unchanged_count": 5, "changed_count": 3}
+    
+    # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
+    processing_started_at = Column(DateTime)
+    processing_completed_at = Column(DateTime)
     
     # Relationships
     employee_revisions = relationship("EmployeeRevision", back_populates="session")
+    processing_activities = relationship("ProcessingActivity", back_populates="session")
 
 class EmployeeRevision(Base):
     __tablename__ = "employee_revisions"
@@ -96,15 +151,59 @@ class EmployeeRevision(Base):
     employee_name = Column(String, nullable=False)
     employee_id = Column(String)
     card_number = Column(String)
+    
+    # Financial data
     car_total = Column(Decimal(15, 2), default=0.00)
     receipt_total = Column(Decimal(15, 2), default=0.00)
-    status = Column(String, default="unfinished")
+    difference = Column(Decimal(15, 2), default=0.00)
+    
+    # Status and validation
+    status = Column(String, default="pending")  # pending, processing, finished, issues, resolved
     validation_flags = Column(Text)  # JSON string
+    has_issues = Column(Boolean, default=False)
     issues_count = Column(Integer, default=0)
+    resolution_notes = Column(Text)
+    resolved_by = Column(String)
+    resolved_at = Column(DateTime)
+    
+    # Delta tracking
+    changed_from_previous = Column(Boolean, default=True)
+    previous_revision_id = Column(String)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
+    processed_at = Column(DateTime)
     
     # Relationships
     session = relationship("ProcessingSession", back_populates="employee_revisions")
+
+class ProcessingActivity(Base):
+    """Track processing activities for real-time updates"""
+    __tablename__ = "processing_activities"
+    
+    activity_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String, ForeignKey("processing_sessions.session_id"))
+    activity_type = Column(String)  # started, employee_completed, issue_found, completed, etc.
+    message = Column(String)
+    employee_name = Column(String)
+    details = Column(Text)  # JSON for additional data
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    session = relationship("ProcessingSession", back_populates="processing_activities")
+
+class FileUpload(Base):
+    """Track file uploads separately for better management"""
+    __tablename__ = "file_uploads"
+    
+    upload_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String, ForeignKey("processing_sessions.session_id"))
+    file_type = Column(String)  # car, receipt
+    filename = Column(String)
+    file_path = Column(String)
+    checksum = Column(String)
+    file_size = Column(Integer)
+    upload_status = Column(String, default="uploaded")  # uploaded, processed, failed
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
 ```
 
 #### **API Endpoints with Frontend Integration**
@@ -285,219 +384,945 @@ async def export_pvault(session_id: str):
     
     return FileResponse(
         export_path,
-        filename=f"pvault_export_{session_id}.csv",
-        media_type="text/csv"
+        filename=filename,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
     )
+
+# Processing Control Endpoints
+
+@app.post("/api/sessions/{session_id}/process")
+async def start_processing(
+    session_id: str,
+    process_request: ProcessingRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    username: str = Depends(get_current_username)
+):
+    """Start processing for a session"""
+    
+    session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
+    if not session:
+        raise HTTPException(404, "Session not found")
+    
+    if session.status not in ["files_uploaded", "created"]:
+        raise HTTPException(400, "Session cannot be processed in current state")
+    
+    # Update session status
+    session.status = "processing"
+    session.processing_started_at = datetime.utcnow()
+    session.processing_config = json.dumps(process_request.config)
+    db.commit()
+    
+    # Start processing in background
+    background_tasks.add_task(process_session, session_id, process_request.config)
+    
+    return {
+        "session_id": session_id,
+        "status": "processing",
+        "message": "Processing started"
+    }
+
+@app.post("/api/sessions/{session_id}/pause")
+async def pause_processing(
+    session_id: str,
+    db: Session = Depends(get_db),
+    username: str = Depends(get_current_username)
+):
+    """Pause processing"""
+    
+    session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
+    if not session:
+        raise HTTPException(404, "Session not found")
+    
+    if session.status != "processing":
+        raise HTTPException(400, "Session is not currently processing")
+    
+    session.status = "paused"
+    db.commit()
+    
+    # Add activity log
+    activity = ProcessingActivity(
+        session_id=session_id,
+        activity_type="paused",
+        message="Processing paused by user"
+    )
+    db.add(activity)
+    db.commit()
+    
+    return {
+        "session_id": session_id,
+        "status": "paused",
+        "message": "Processing paused"
+    }
+
+@app.post("/api/sessions/{session_id}/resume")
+async def resume_processing(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    username: str = Depends(get_current_username)
+):
+    """Resume paused processing"""
+    
+    session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
+    if not session:
+        raise HTTPException(404, "Session not found")
+    
+    if session.status != "paused":
+        raise HTTPException(400, "Session is not paused")
+    
+    session.status = "processing"
+    db.commit()
+    
+    # Add activity log
+    activity = ProcessingActivity(
+        session_id=session_id,
+        activity_type="resumed",
+        message="Processing resumed by user"
+    )
+    db.add(activity)
+    db.commit()
+    
+    # Resume processing in background
+    processing_config = json.loads(session.processing_config or "{}")
+    background_tasks.add_task(process_session, session_id, processing_config)
+    
+    return {
+        "session_id": session_id,
+        "status": "processing",
+        "message": "Processing resumed"
+    }
+
+@app.post("/api/sessions/{session_id}/cancel")
+async def cancel_processing(
+    session_id: str,
+    db: Session = Depends(get_db),
+    username: str = Depends(get_current_username)
+):
+    """Cancel processing"""
+    
+    session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
+    if not session:
+        raise HTTPException(404, "Session not found")
+    
+    if session.status not in ["processing", "paused"]:
+        raise HTTPException(400, "Session cannot be cancelled in current state")
+    
+    session.status = "cancelled"
+    db.commit()
+    
+    # Add activity log
+    activity = ProcessingActivity(
+        session_id=session_id,
+        activity_type="cancelled",
+        message="Processing cancelled by user"
+    )
+    db.add(activity)
+    db.commit()
+    
+    return {
+        "session_id": session_id,
+        "status": "cancelled",
+        "message": "Processing cancelled"
+    }
+
+# Issue Resolution Endpoints
+
+@app.post("/api/results/{session_id}/employees/{revision_id}/resolve")
+async def resolve_employee_issue(
+    session_id: str,
+    revision_id: str,
+    resolution: IssueResolution,
+    db: Session = Depends(get_db),
+    username: str = Depends(get_current_username)
+):
+    """Resolve an employee issue"""
+    
+    employee = db.query(EmployeeRevision).filter_by(
+        session_id=session_id,
+        revision_id=revision_id
+    ).first()
+    
+    if not employee:
+        raise HTTPException(404, "Employee revision not found")
+    
+    # Update resolution
+    employee.status = "resolved" if resolution.resolution_type == "resolved" else employee.status
+    employee.resolution_notes = resolution.notes
+    employee.resolved_by = username
+    employee.resolved_at = datetime.utcnow()
+    
+    # Update issues flag if resolved
+    if resolution.resolution_type == "resolved":
+        employee.has_issues = False
+        employee.issues_count = 0
+    
+    db.commit()
+    
+    # Add activity log
+    activity = ProcessingActivity(
+        session_id=session_id,
+        activity_type="issue_resolved",
+        message=f"Issue resolved for {employee.employee_name}: {resolution.notes[:100]}...",
+        employee_name=employee.employee_name
+    )
+    db.add(activity)
+    db.commit()
+    
+    return {
+        "revision_id": revision_id,
+        "employee_name": employee.employee_name,
+        "status": employee.status,
+        "resolved_by": employee.resolved_by,
+        "resolved_at": employee.resolved_at.isoformat(),
+        "resolution_notes": employee.resolution_notes
+    }
 ```
 
-### Phase 2: Document Processing Integration (Week 2)
+#### **Pydantic Request/Response Models**
 
-#### **Azure Document Intelligence Integration**
 ```python
-# document_processor.py - Simplified and robust implementation
-from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.core.credentials import AzureKeyCredential
+# schemas.py - Request and Response Models
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+
+class SessionCreateRequest(BaseModel):
+    session_name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=500)
+    parent_session_id: Optional[str] = None
+    is_delta_session: bool = False
+    processing_config: Dict[str, Any] = Field(default_factory=dict)
+
+class ProcessingRequest(BaseModel):
+    config: Dict[str, Any] = Field(default_factory=dict)
+
+class DeltaDetectionRequest(BaseModel):
+    checksum: str = Field(..., min_length=64, max_length=64)
+    file_type: str = Field(..., regex="^(car|receipt)$")
+
+class ExportRequest(BaseModel):
+    export_type: str = Field(..., regex="^(pvault|followup|issues)$")
+    include_resolved: bool = False
+    date_range: Optional[Dict[str, str]] = None
+
+class IssueResolution(BaseModel):
+    resolution_type: str = Field(..., regex="^(resolved|pending|escalated)$")
+    notes: str = Field(..., min_length=1, max_length=1000)
+    resolved_by: Optional[str] = None
+
+class SessionResponse(BaseModel):
+    session_id: str
+    session_name: str
+    description: Optional[str]
+    status: str
+    total_employees: int
+    completed_employees: int
+    is_delta_session: bool
+    created_at: str
+    
+class StatusResponse(BaseModel):
+    status: str
+    current_employee: Optional[int]
+    total_employees: int
+    message: str
+    percent_complete: int
+    completed_employees: int
+    processing_employees: int
+    issues_employees: int
+    pending_employees: int
+    current_employee_name: Optional[str]
+    estimated_time_remaining: Optional[int]
+    recent_activities: List[Dict[str, Any]]
+```
+
+### Phase 2: Enhanced Delta Recognition & Processing Logic (Week 2)
+
+#### **Delta Recognition System**
+
+```python
+# delta_processor.py - File comparison and change detection
+from typing import List, Dict, Optional, Tuple
+import hashlib
 import json
+from sqlalchemy.orm import Session
+from models import ProcessingSession, EmployeeRevision
+
+class DeltaProcessor:
+    def __init__(self, db: Session):
+        self.db = db
+    
+    def detect_delta_session(self, car_checksum: str, receipt_checksum: str, username: str) -> Optional[Dict]:
+        """Detect if files match a previous session"""
+        
+        # Find matching sessions
+        query = self.db.query(ProcessingSession).filter(
+            ProcessingSession.username == username,
+            ProcessingSession.status == "completed"
+        )
+        
+        # Check for exact matches
+        exact_matches = query.filter(
+            ProcessingSession.car_file_checksum == car_checksum,
+            ProcessingSession.receipt_file_checksum == receipt_checksum
+        ).order_by(ProcessingSession.created_at.desc()).limit(1).all()
+        
+        if exact_matches:
+            parent_session = exact_matches[0]
+            return {
+                "found": True,
+                "match_type": "exact",
+                "parent_session_id": parent_session.session_id,
+                "parent_session_name": parent_session.session_name,
+                "created_at": parent_session.created_at.isoformat(),
+                "employee_count": parent_session.total_employees,
+                "recommendation": "Skip processing - files are identical"
+            }
+        
+        # Check for partial matches (CAR file only)
+        car_matches = query.filter(
+            ProcessingSession.car_file_checksum == car_checksum
+        ).order_by(ProcessingSession.created_at.desc()).limit(1).all()
+        
+        if car_matches:
+            parent_session = car_matches[0]
+            return {
+                "found": True,
+                "match_type": "partial",
+                "parent_session_id": parent_session.session_id,
+                "parent_session_name": parent_session.session_name,
+                "created_at": parent_session.created_at.isoformat(),
+                "employee_count": parent_session.total_employees,
+                "recommendation": "Process only receipt changes"
+            }
+        
+        return {"found": False, "match_type": None, "recommendation": "Full processing required"}
+    
+    def compare_employee_data(self, current_employees: List[Dict], previous_session_id: str) -> Dict:
+        """Compare employee data between sessions"""
+        
+        # Get previous session employees
+        previous_employees = self.db.query(EmployeeRevision).filter_by(
+            session_id=previous_session_id
+        ).all()
+        
+        # Create lookup dictionaries
+        previous_lookup = {
+            (emp.employee_name, emp.employee_id): emp 
+            for emp in previous_employees
+        }
+        
+        current_lookup = {
+            (emp["employee_name"], emp.get("employee_id")): emp 
+            for emp in current_employees
+        }
+        
+        # Find differences
+        unchanged = []
+        changed = []
+        new_employees = []
+        removed_employees = []
+        
+        for key, current_emp in current_lookup.items():
+            if key in previous_lookup:
+                previous_emp = previous_lookup[key]
+                
+                # Compare key fields
+                if (
+                    abs(float(current_emp.get("car_total", 0)) - float(previous_emp.car_total)) < 0.01 and
+                    abs(float(current_emp.get("receipt_total", 0)) - float(previous_emp.receipt_total)) < 0.01
+                ):
+                    unchanged.append({"current": current_emp, "previous": previous_emp})
+                else:
+                    changed.append({"current": current_emp, "previous": previous_emp})
+            else:
+                new_employees.append(current_emp)
+        
+        # Find removed employees
+        for key, previous_emp in previous_lookup.items():
+            if key not in current_lookup:
+                removed_employees.append(previous_emp)
+        
+        return {
+            "unchanged_count": len(unchanged),
+            "changed_count": len(changed),
+            "new_count": len(new_employees),
+            "removed_count": len(removed_employees),
+            "unchanged": unchanged,
+            "changed": changed,
+            "new_employees": new_employees,
+            "removed_employees": removed_employees
+        }
+    
+    def create_delta_session(self, session_id: str, parent_session_id: str, delta_info: Dict):
+        """Create a delta session with comparison data"""
+        
+        session = self.db.query(ProcessingSession).filter_by(session_id=session_id).first()
+        if session:
+            session.parent_session_id = parent_session_id
+            session.is_delta_session = True
+            session.delta_info = json.dumps(delta_info)
+            self.db.commit()
+```
+
+#### **Enhanced Document Processing with Delta Support**
+
+```python
+# processing_engine.py - Core processing logic
+from typing import List, Dict, Optional
+import asyncio
+import json
+from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from models import ProcessingSession, EmployeeRevision, ProcessingActivity
+from delta_processor import DeltaProcessor
+
+class ProcessingEngine:
+    def __init__(self, db: Session):
+        self.db = db
+        self.delta_processor = DeltaProcessor(db)
+    
+    async def process_session(self, session_id: str, config: Dict):
+        """Main processing function with delta support"""
+        
+        session = self.db.query(ProcessingSession).filter_by(session_id=session_id).first()
+        if not session:
+            raise ValueError("Session not found")
+        
+        try:
+            # Update session status
+            session.status = "processing"
+            session.processing_started_at = datetime.utcnow()
+            self.db.commit()
+            
+            # Log processing start
+            self._add_activity(session_id, "processing_started", "Processing started")
+            
+            # Extract data from files
+            extracted_data = await self._extract_document_data(session)
+            
+            # Handle delta processing if applicable
+            if session.is_delta_session and session.parent_session_id:
+                delta_info = self.delta_processor.compare_employee_data(
+                    extracted_data, session.parent_session_id
+                )
+                session.delta_info = json.dumps(delta_info)
+                
+                # Skip unchanged employees if configured
+                if config.get("skip_unchanged", False):
+                    extracted_data = delta_info["changed"] + delta_info["new_employees"]
+                    self._add_activity(
+                        session_id, "delta_optimization", 
+                        f"Skipped {delta_info['unchanged_count']} unchanged employees"
+                    )
+            
+            # Update employee counts
+            session.total_employees = len(extracted_data)
+            session.pending_employees = len(extracted_data)
+            self.db.commit()
+            
+            # Process each employee
+            for i, employee_data in enumerate(extracted_data):
+                if session.status in ["cancelled", "paused"]:
+                    break
+                
+                await self._process_employee(session_id, employee_data, i + 1)
+                
+                # Update progress
+                session.completed_employees = i + 1
+                session.pending_employees = len(extracted_data) - (i + 1)
+                session.current_employee_name = employee_data.get("employee_name")
+                
+                # Estimate time remaining
+                if i > 0:
+                    elapsed = (datetime.utcnow() - session.processing_started_at).total_seconds()
+                    avg_time_per_employee = elapsed / i
+                    remaining_employees = len(extracted_data) - i
+                    session.estimated_time_remaining = int(avg_time_per_employee * remaining_employees)
+                
+                self.db.commit()
+                
+                # Small delay to prevent overwhelming the system
+                await asyncio.sleep(0.1)
+            
+            # Complete processing
+            if session.status == "processing":
+                session.status = "completed"
+                session.processing_completed_at = datetime.utcnow()
+                session.current_employee_name = None
+                session.estimated_time_remaining = None
+                
+                self._add_activity(session_id, "processing_completed", "Processing completed successfully")
+            
+            self.db.commit()
+            
+        except Exception as e:
+            session.status = "failed"
+            self._add_activity(session_id, "processing_failed", f"Processing failed: {str(e)}")
+            self.db.commit()
+            raise
+    
+    async def _extract_document_data(self, session: ProcessingSession) -> List[Dict]:
+        """Extract data from uploaded documents"""
+        
+        # Mock implementation - replace with actual document intelligence
+        # This would integrate with Azure Document Intelligence
+        
+        employees = []
+        
+        # Process CAR file
+        if session.car_file_path:
+            car_employees = await self._process_car_file(session.car_file_path)
+            employees.extend(car_employees)
+        
+        # Process Receipt file and match with CAR data
+        if session.receipt_file_path:
+            receipt_data = await self._process_receipt_file(session.receipt_file_path)
+            employees = self._match_receipt_data(employees, receipt_data)
+        
+        return employees
+    
+    async def _process_car_file(self, file_path: str) -> List[Dict]:
+        """Process CAR PDF file"""
+        # Mock implementation - replace with Azure Document Intelligence
+        return [
+            {
+                "employee_name": "John Smith",
+                "employee_id": "E12345",
+                "card_number": "****1234",
+                "car_total": 1250.75,
+                "receipt_total": 0.0
+            }
+            # More employees would be extracted here
+        ]
+    
+    async def _process_receipt_file(self, file_path: str) -> List[Dict]:
+        """Process Receipt PDF file"""
+        # Mock implementation
+        return [
+            {
+                "employee_name": "John Smith",
+                "receipt_total": 1180.50
+            }
+        ]
+    
+    def _match_receipt_data(self, car_data: List[Dict], receipt_data: List[Dict]) -> List[Dict]:
+        """Match receipt data with CAR data"""
+        
+        receipt_lookup = {emp["employee_name"]: emp for emp in receipt_data}
+        
+        for car_emp in car_data:
+            emp_name = car_emp["employee_name"]
+            if emp_name in receipt_lookup:
+                car_emp["receipt_total"] = receipt_lookup[emp_name]["receipt_total"]
+                car_emp["difference"] = car_emp["car_total"] - car_emp["receipt_total"]
+            else:
+                car_emp["difference"] = car_emp["car_total"]
+        
+        return car_data
+    
+    async def _process_employee(self, session_id: str, employee_data: Dict, employee_number: int):
+        """Process individual employee data"""
+        
+        revision_id = f"{session_id}_{employee_number:03d}"
+        
+        # Create employee revision
+        employee = EmployeeRevision(
+            revision_id=revision_id,
+            session_id=session_id,
+            employee_name=employee_data["employee_name"],
+            employee_id=employee_data.get("employee_id"),
+            card_number=employee_data.get("card_number"),
+            car_total=employee_data.get("car_total", 0),
+            receipt_total=employee_data.get("receipt_total", 0),
+            difference=employee_data.get("car_total", 0) - employee_data.get("receipt_total", 0),
+            status="processing",
+            processed_at=datetime.utcnow()
+        )
+        
+        # Validate and detect issues
+        validation_result = self._validate_employee_data(employee_data)
+        
+        if validation_result["has_issues"]:
+            employee.has_issues = True
+            employee.issues_count = len(validation_result["issues"])
+            employee.validation_flags = json.dumps(validation_result["issues"])
+            employee.status = "issues"
+        else:
+            employee.status = "finished"
+        
+        self.db.add(employee)
+        self.db.commit()
+        
+        # Log activity
+        if employee.has_issues:
+            self._add_activity(
+                session_id, "employee_issues", 
+                f"Issues found for {employee.employee_name}",
+                employee.employee_name
+            )
+        else:
+            self._add_activity(
+                session_id, "employee_completed", 
+                f"Completed processing for {employee.employee_name}",
+                employee.employee_name
+            )
+    
+    def _validate_employee_data(self, employee_data: Dict) -> Dict:
+        """Validate employee data and detect issues"""
+        
+        issues = {}
+        
+        # Check for missing receipt data
+        if not employee_data.get("receipt_total") or employee_data.get("receipt_total", 0) == 0:
+            issues["missing_receipt"] = {
+                "severity": "medium",
+                "description": "No receipt data found",
+                "suggestion": "Contact employee for receipts"
+            }
+        
+        # Check for amount mismatches
+        car_total = employee_data.get("car_total", 0)
+        receipt_total = employee_data.get("receipt_total", 0)
+        difference = abs(car_total - receipt_total)
+        
+        if difference > 10:  # Threshold for significant mismatch
+            issues["amount_mismatch"] = {
+                "severity": "high",
+                "description": f"Amount difference: ${difference:.2f}",
+                "suggestion": "Review transactions and receipts"
+            }
+        
+        # Check for missing employee ID
+        if not employee_data.get("employee_id"):
+            issues["missing_employee_id"] = {
+                "severity": "low",
+                "description": "Employee ID not found",
+                "suggestion": "Update employee information"
+            }
+        
+        return {
+            "has_issues": len(issues) > 0,
+            "issue_count": len(issues),
+            "issues": issues
+        }
+    
+    def _add_activity(self, session_id: str, activity_type: str, message: str, employee_name: str = None):
+        """Add processing activity log"""
+        
+        activity = ProcessingActivity(
+            session_id=session_id,
+            activity_type=activity_type,
+            message=message,
+            employee_name=employee_name
+        )
+        
+        self.db.add(activity)
+        self.db.commit()
+
+# Background task function
+async def process_session(session_id: str, config: Dict):
+    """Background task for processing sessions"""
+    
+    from database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        engine = ProcessingEngine(db)
+        await engine.process_session(session_id, config)
+    except Exception as e:
+        print(f"Processing failed for session {session_id}: {str(e)}")
+    finally:
+        db.close()
+```
+
+### Phase 3: Authentication & Database Setup (Week 3)
+
+#### **Windows Authentication Integration**
+
+```python
+# auth.py - Windows username authentication
+from fastapi import Depends, HTTPException, Request
+from typing import Optional
+import os
+
+# Admin users from Frontend Plan requirements
+ADMIN_USERS = ["rcox", "mikeh", "tomj"]
+
+def get_current_username(request: Request) -> str:
+    """Extract Windows username from request headers"""
+    
+    # Try different header patterns for Windows authentication
+    username = None
+    
+    # Check for Windows authentication headers
+    headers_to_check = [
+        "HTTP_REMOTE_USER",
+        "REMOTE_USER",
+        "HTTP_X_REMOTE_USER",
+        "X-Remote-User",
+        "HTTP_SM_USER",
+        "SM_USER"
+    ]
+    
+    for header in headers_to_check:
+        username = request.headers.get(header)
+        if username:
+            break
+    
+    # Fallback for development/testing
+    if not username:
+        username = os.environ.get("USERNAME") or os.environ.get("USER") or "testuser"
+    
+    # Clean username (remove domain if present)
+    if "\\" in username:
+        username = username.split("\\")[-1]
+    
+    if "@" in username:
+        username = username.split("@")[0]
+    
+    return username.lower()
+
+def get_current_user(request: Request) -> dict:
+    """Get current user with admin status"""
+    
+    username = get_current_username(request)
+    
+    return {
+        "username": username,
+        "is_admin": username in ADMIN_USERS,
+        "display_name": username.title()
+    }
+
+def require_admin(user: dict = Depends(get_current_user)):
+    """Require admin access"""
+    
+    if not user["is_admin"]:
+        raise HTTPException(403, "Admin access required")
+    
+    return user
+
+# Authentication endpoint
+@app.get("/api/auth/current-user")
+async def get_current_user_info(user: dict = Depends(get_current_user)):
+    """Get current user information for frontend"""
+    
+    return {
+        "username": user["username"],
+        "display_name": user["display_name"],
+        "is_admin": user["is_admin"]
+    }
+```
+
+#### **Database Configuration & Setup**
+
+```python
+# database.py - Database configuration
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
+
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/credit_card_processor.db")
+
+# Create engine
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args={"check_same_thread": False},
+        echo=False  # Set to True for SQL debugging
+    )
+else:
+    engine = create_engine(DATABASE_URL, echo=False)
+
+# Create session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for models
+Base = declarative_base()
+
+# Database dependency
+def get_db():
+    """Database dependency for FastAPI"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Database initialization
+def init_database():
+    """Initialize database tables"""
+    
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
+    os.makedirs("data/uploads", exist_ok=True)
+    os.makedirs("data/exports", exist_ok=True)
+    
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+    print("Database initialized successfully")
+
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup"""
+    init_database()
+    print("Credit Card Processor API started")
+```
+
+#### **Configuration Management**
+
+```python
+# config.py - Application configuration
+from pydantic import BaseSettings
+from typing import List
+import os
+
+class Settings(BaseSettings):
+    # Application settings
+    app_title: str = "Credit Card Processor API"
+    app_version: str = "2.0.0"
+    debug: bool = False
+    
+    # Database settings
+    database_url: str = "sqlite:///./data/credit_card_processor.db"
+    
+    # File storage settings
+    upload_directory: str = "./data/uploads"
+    export_directory: str = "./data/exports"
+    max_file_size: int = 100 * 1024 * 1024  # 100MB
+    allowed_file_types: List[str] = ["pdf"]
+    
+    # Processing settings
+    max_concurrent_sessions: int = 5
+    processing_timeout: int = 3600  # 1 hour
+    
+    # Authentication settings
+    admin_users: List[str] = ["rcox", "mikeh", "tomj"]
+    
+    # Azure Document Intelligence (when implemented)
+    azure_doc_intelligence_endpoint: str = ""
+    azure_doc_intelligence_key: str = ""
+    
+    # CORS settings
+    allowed_origins: List[str] = ["*"]
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+# Global settings instance
+settings = Settings()
+
+# Update FastAPI app with settings
+app.title = settings.app_title
+app.version = settings.app_version
+app.debug = settings.debug
+```
+
+#### **Error Handling & Validation**
+
+```python
+# error_handlers.py - Centralized error handling
+from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
+from datetime import datetime
 import logging
 
-class DocumentProcessor:
-    def __init__(self, endpoint: str, key: str):
-        self.client = DocumentIntelligenceClient(
-            endpoint=endpoint, 
-            credential=AzureKeyCredential(key)
-        )
-        self.logger = logging.getLogger(__name__)
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class APIError(Exception):
+    """Custom API exception"""
+    def __init__(self, status_code: int, message: str, details: str = None, code: str = None):
+        self.status_code = status_code
+        self.message = message
+        self.details = details
+        self.code = code
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with consistent format"""
     
-    async def process_car_pdf(self, file_path: str, session_id: str) -> List[dict]:
-        """Process CAR PDF with error handling"""
-        try:
-            with open(file_path, "rb") as f:
-                file_content = f.read()
-            
-            # Use prebuilt-invoice model for CAR files
-            poller = self.client.begin_analyze_document(
-                "prebuilt-invoice", file_content
-            )
-            result = poller.result()
-            
-            employees = []
-            for document in result.documents:
-                employee_data = self._extract_employee_data(document)
-                if employee_data:
-                    employees.append(employee_data)
-            
-            # Update database with extracted data
-            await self._save_employee_data(session_id, employees)
-            
-            return employees
-            
-        except Exception as e:
-            self.logger.error(f"Error processing CAR PDF {file_path}: {str(e)}")
-            raise HTTPException(500, f"Document processing failed: {str(e)}")
-    
-    def _extract_employee_data(self, document) -> dict:
-        """Extract employee data from document intelligence result"""
-        try:
-            return {
-                "employee_name": self._get_field_value(document, "CustomerName"),
-                "employee_id": self._get_field_value(document, "CustomerID"),
-                "car_total": float(self._get_field_value(document, "TotalAmount", "0")),
-                "status": "extracted"
-            }
-        except Exception as e:
-            self.logger.warning(f"Failed to extract employee data: {str(e)}")
-            return None
-    
-    def _get_field_value(self, document, field_name: str, default=""):
-        """Safely extract field value"""
-        if hasattr(document, 'fields') and field_name in document.fields:
-            field = document.fields[field_name]
-            return field.value if field and hasattr(field, 'value') else default
-        return default
-```
-
-### Phase 3: Frontend Integration Patterns (Weeks 3-4)
-
-#### **Vue.js Composables for API Integration**
-```javascript
-// composables/useFileUpload.js - Vue 3 integration
-import { ref, reactive } from 'vue'
-
-export function useFileUpload() {
-  const uploadState = reactive({
-    carFile: null,
-    receiptFile: null,
-    sessionName: '',
-    uploading: false,
-    error: null,
-    sessionId: null
-  })
-
-  const uploadFiles = async () => {
-    if (!uploadState.carFile && !uploadState.receiptFile) {
-      uploadState.error = 'At least one file is required'
-      return false
-    }
-
-    uploadState.uploading = true
-    uploadState.error = null
-
-    try {
-      const formData = new FormData()
-      if (uploadState.carFile) {
-        formData.append('car_file', uploadState.carFile)
-      }
-      if (uploadState.receiptFile) {
-        formData.append('receipt_file', uploadState.receiptFile)
-      }
-      formData.append('session_name', uploadState.sessionName)
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      uploadState.sessionId = result.session_id
-      
-      return result
-    } catch (error) {
-      uploadState.error = error.message
-      return false
-    } finally {
-      uploadState.uploading = false
-    }
-  }
-
-  const resetUpload = () => {
-    uploadState.carFile = null
-    uploadState.receiptFile = null
-    uploadState.sessionName = ''
-    uploadState.error = null
-    uploadState.sessionId = null
-  }
-
-  return {
-    uploadState,
-    uploadFiles,
-    resetUpload
-  }
-}
-```
-
-#### **Real-time Progress Tracking**
-```javascript
-// composables/useProgressTracking.js
-import { ref, onUnmounted } from 'vue'
-
-export function useProgressTracking() {
-  const progress = ref({
-    status: 'idle',
-    total_employees: 0,
-    completed_employees: 0,
-    progress_percent: 0
-  })
-
-  const error = ref(null)
-  let eventSource = null
-
-  const startTracking = (sessionId) => {
-    if (eventSource) {
-      eventSource.close()
-    }
-
-    eventSource = new EventSource(`/api/progress/${sessionId}`)
-    
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.error) {
-          error.value = data.error
-          eventSource.close()
-        } else {
-          progress.value = data
-          
-          // Close connection when processing is complete
-          if (data.status === 'completed' || data.status === 'failed') {
-            eventSource.close()
-          }
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "detail": getattr(exc, "details", None),
+            "code": f"HTTP_{exc.status_code}",
+            "timestamp": datetime.utcnow().isoformat()
         }
-      } catch (e) {
-        error.value = 'Failed to parse progress data'
-      }
+    )
+
+@app.exception_handler(APIError)
+async def api_exception_handler(request: Request, exc: APIError):
+    """Handle custom API exceptions"""
+    
+    logger.error(f"API Error: {exc.message} - {exc.details}")
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.message,
+            "detail": exc.details,
+            "code": exc.code or f"API_ERROR_{exc.status_code}",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions"""
+    
+    logger.error(f"Unexpected error: {str(exc)}", exc_info=True)
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "An unexpected error occurred",
+            "detail": str(exc) if app.debug else "Internal server error",
+            "code": "INTERNAL_SERVER_ERROR",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
+
+# Validation helpers
+def validate_file_upload(file) -> Dict:
+    """Validate uploaded file"""
+    
+    if not file:
+        raise APIError(400, "No file provided", code="NO_FILE")
+    
+    # Check file size
+    if file.size > settings.max_file_size:
+        raise APIError(
+            400, 
+            f"File size exceeds limit of {settings.max_file_size / (1024*1024):.1f}MB",
+            code="FILE_TOO_LARGE"
+        )
+    
+    # Check file type
+    file_extension = file.filename.split(".")[-1].lower()
+    if file_extension not in settings.allowed_file_types:
+        raise APIError(
+            400,
+            f"File type .{file_extension} not allowed. Allowed types: {', '.join(settings.allowed_file_types)}",
+            code="INVALID_FILE_TYPE"
+        )
+    
+    return {
+        "valid": True,
+        "filename": file.filename,
+        "size": file.size,
+        "type": file_extension
     }
-
-    eventSource.onerror = () => {
-      error.value = 'Connection to progress stream lost'
-      eventSource.close()
-    }
-  }
-
-  const stopTracking = () => {
-    if (eventSource) {
-      eventSource.close()
-      eventSource = null
-    }
-  }
-
-  onUnmounted(() => {
-    stopTracking()
-  })
-
-  return {
-    progress,
-    error,
-    startTracking,
-    stopTracking
-  }
-}
 ```
 
-### Phase 4: Deployment Strategy
+### Phase 4: Production Deployment & Monitoring (Week 4)
 
 #### **Azure Infrastructure Integration**
 ```yaml
