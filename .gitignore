@@ -1,0 +1,41 @@
+# Ignore historic directories
+historic/
+
+# Dependency directories
+node_modules/
+dist/
+build/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# Environment and configuration files
+.env
+*.env
+*.iml
+
+# Logs
+*.log
+
+# IDE directories
+.idea/
+.vscode/
+
+# OS-specific files
+.DS_Store
+
+# Coverage
+.coverage
+coverage/
+
+# Editor swap files
+*.swp
+*.swo
