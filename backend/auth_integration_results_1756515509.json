@@ -1,0 +1,32 @@
+{
+  "timestamp": "2025-08-30T00:58:28.964087",
+  "workflow_tests": {
+    "admin_workflow": {
+      "error": "Authentication failed for rcox: {\"detail\":\"Authentication required\",\"type\":\"authentication_error\"}"
+    },
+    "regular_user_workflow": {
+      "error": "Authentication failed for testuser: {\"detail\":\"Authentication required\",\"type\":\"authentication_error\"}"
+    },
+    "delta_session_workflow": {
+      "error": "Authentication failed for rcox: {\"detail\":\"Authentication required\",\"type\":\"authentication_error\"}"
+    },
+    "auth_error_scenarios": {
+      "error": "Regular user should not access admin endpoint"
+    },
+    "cross_user_access_control": {
+      "error": "Authentication failed for testuser1: {\"detail\":\"Authentication required\",\"type\":\"authentication_error\"}"
+    }
+  },
+  "performance_tests": {
+    "concurrent_session_creation": {
+      "error": "Concurrent success rate too low: 0.0%"
+    },
+    "mixed_concurrent_operations": {
+      "error": "Mixed operations success rate too low: 0.0%"
+    }
+  },
+  "overall_status": "NEEDS_IMPROVEMENT",
+  "success_rate": 0.0,
+  "successful_tests": 0,
+  "total_tests": 7
+}

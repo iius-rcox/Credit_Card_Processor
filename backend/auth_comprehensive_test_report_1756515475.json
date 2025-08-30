@@ -1,0 +1,41 @@
+{
+  "timestamp": "2025-08-30T00:57:55.317731",
+  "test_suite_version": "1.0",
+  "environment": {
+    "python_version": "3.13.7 (main, Aug 14 2025, 11:12:11) [Clang 17.0.0 (clang-1700.0.13.3)]",
+    "platform": "darwin",
+    "working_directory": "/Users/rogercox/Credit_Card_Processor/backend",
+    "test_runner_path": "/Users/rogercox/Credit_Card_Processor/backend/run_auth_performance_tests.py"
+  },
+  "performance_tests": {
+    "success": false,
+    "error": "No module named 'pytest'",
+    "duration_seconds": 0.03675699234008789
+  },
+  "integration_tests": {
+    "success": false,
+    "error": "No module named 'pytest'",
+    "duration_seconds": 0.046217918395996094
+  },
+  "overall_assessment": {
+    "overall_score": 0,
+    "max_possible_score": 300,
+    "percentage_score": 0.0,
+    "grade": "D (Unacceptable)",
+    "status": "CRITICAL_ISSUES_BLOCKING",
+    "performance_tests_passed": false,
+    "integration_tests_passed": false,
+    "existing_tests_passed": false,
+    "test_completion_time": 0.0462949275970459,
+    "recommendations": [
+      "CRITICAL: Fix existing session API tests - regression detected",
+      "HIGH: Address authentication performance issues",
+      "HIGH: Fix authentication integration workflow issues",
+      "BLOCKER: Test score below acceptable threshold - do not deploy"
+    ]
+  },
+  "existing_tests": {
+    "success": false,
+    "error": "No module named 'pytest'"
+  }
+}

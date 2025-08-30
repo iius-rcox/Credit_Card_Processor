@@ -10,7 +10,17 @@
       "Bash(npm run dev:*)",
       "Bash(npm run lint:*)",
       "Bash(npm run format:check:*)",
-      "Bash(npm run format:*)"
+      "Bash(npm run format:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(docker:*)",
+      "Bash(chmod:*)",
+      "Bash(source:*)",
+      "Bash(alembic revision:*)",
+      "Bash(PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages:/Users/rogercox/Library/Python/3.9/lib/python/site-packages:. /opt/homebrew/bin/python3 -c \"import pytest; print(''pytest available'')\")",
+      "Bash(PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages:/Users/rogercox/Library/Python/3.9/lib/python/site-packages:. /opt/homebrew/bin/python3 test_auth_comprehensive.py)",
+      "Bash(PYTHONPATH=/Users/rogercox/Library/Python/3.9/lib/python/site-packages:. python3 test_auth_comprehensive.py)",
+      "Bash(uvicorn:*)",
+      "Bash(PYTHONPATH=/Users/rogercox/Credit_Card_Processor/backend DEBUG=True uvicorn app.main:app --host 127.0.0.1 --port 8001)"
     ],
     "deny": [],
     "ask": []
