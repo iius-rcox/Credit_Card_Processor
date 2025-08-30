@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from .config import settings, init_directories
 
 # Create database engine
@@ -12,8 +11,9 @@ engine = create_engine(
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for models
-Base = declarative_base()
+# Base class for models using modern SQLAlchemy 2.0+ pattern
+class Base(DeclarativeBase):
+    pass
 
 # Database dependency
 def get_db():

@@ -72,8 +72,25 @@
         <div class="card">
           <h3 class="text-lg font-medium text-gray-900 mb-4">File Upload</h3>
           <div
-            class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center"
+            :class="[
+              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+              isDragOver
+                ? 'border-blue-400 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400',
+            ]"
+            @drop.prevent="handleFileDrop"
+            @dragover.prevent="isDragOver = true"
+            @dragleave.prevent="isDragOver = false"
+            @click="triggerFileInput"
           >
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              accept=".pdf,application/pdf"
+              class="hidden"
+              @change="handleFileSelect"
+            />
             <div class="text-gray-500">
               <svg
                 class="mx-auto h-12 w-12 text-gray-400"
@@ -88,26 +105,172 @@
                   stroke-linejoin="round"
                 />
               </svg>
-              <p class="mt-2 text-sm">Upload your PDF files here</p>
+              <p class="mt-2 text-sm">
+                {{
+                  isDragOver
+                    ? 'Drop files here'
+                    : 'Click to upload or drag and drop PDF files here'
+                }}
+              </p>
               <p class="text-xs text-gray-400 mt-1">
                 Supported formats: PDF (max 10MB per file)
               </p>
             </div>
           </div>
+
+          <!-- File List -->
+          <div v-if="fileUpload.hasFiles" class="mt-4">
+            <h4 class="text-sm font-medium text-gray-900 mb-2">
+              Selected Files
+            </h4>
+            <div class="space-y-2">
+              <div
+                v-for="file in fileUpload.files"
+                :key="file.id"
+                class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+              >
+                <div class="flex items-center space-x-3">
+                  <svg
+                    class="h-8 w-8 text-red-600"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">
+                      {{ file.name }}
+                    </p>
+                    <p class="text-xs text-gray-500">
+                      {{ fileUpload.formatFileSize(file.size) }}
+                    </p>
+                    <div v-if="file.status === 'uploading'" class="mt-1">
+                      <div class="w-32 bg-gray-200 rounded-full h-1">
+                        <div
+                          class="bg-blue-600 h-1 rounded-full transition-all"
+                          :style="{
+                            width: `${fileUpload.uploadProgress[file.id] || 0}%`,
+                          }"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span
+                    :class="[
+                      'px-2 py-1 rounded-full text-xs font-medium',
+                      file.status === 'completed'
+                        ? 'bg-green-100 text-green-800'
+                        : file.status === 'error'
+                          ? 'bg-red-100 text-red-800'
+                          : file.status === 'uploading'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800',
+                    ]"
+                  >
+                    {{ file.status }}
+                  </span>
+                  <button
+                    class="text-red-600 hover:text-red-800"
+                    @click="fileUpload.removeFile(file.id)"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Upload Actions -->
+            <div class="mt-4 flex items-center justify-between">
+              <div class="text-sm text-gray-600">
+                {{ fileUpload.totalFiles }} file(s) selected,
+                {{ fileUpload.completedFiles }} uploaded
+              </div>
+              <div class="space-x-2">
+                <button
+                  class="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                  @click="fileUpload.clearFiles"
+                >
+                  Clear All
+                </button>
+                <button
+                  :disabled="
+                    !fileUpload.hasPendingFiles || !sessionStore.hasSession
+                  "
+                  class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  @click="handleUploadFiles"
+                >
+                  {{ fileUpload.isUploading ? 'Uploading...' : 'Upload Files' }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Processing Status -->
-        <div v-if="sessionStore.isProcessing" class="card">
+        <div v-if="progress.isProcessing || progress.isComplete" class="card">
           <h3 class="text-lg font-medium text-gray-900 mb-4">
             Processing Status
           </h3>
           <div class="space-y-4">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: 45%"></div>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+              <div
+                :class="[
+                  'h-3 rounded-full transition-all duration-300',
+                  progress.progressColor,
+                ]"
+                :style="{ width: `${progress.progressPercentage}%` }"
+              ></div>
             </div>
-            <p class="text-sm text-gray-600 text-center">
-              Processing documents... Please wait.
-            </p>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-600">{{ progress.statusLabel }}</span>
+              <span class="font-medium"
+                >{{ progress.progressPercentage }}%</span
+              >
+            </div>
+            <div
+              v-if="progress.message"
+              class="text-sm text-gray-600 text-center"
+            >
+              {{ progress.message }}
+            </div>
+            <div
+              v-if="progress.estimatedTimeRemaining"
+              class="text-xs text-gray-500 text-center"
+            >
+              {{ progress.estimatedTimeRemaining }}
+            </div>
+
+            <!-- Processing Actions -->
+            <div
+              v-if="sessionStore.hasFiles && !progress.isPolling"
+              class="text-center"
+            >
+              <button
+                :disabled="!sessionStore.hasSession || progress.isProcessing"
+                class="px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                @click="handleStartProcessing"
+              >
+                Start Processing
+              </button>
+            </div>
           </div>
         </div>
 
@@ -162,34 +325,164 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted, watch } from 'vue'
 import { useSessionStore } from './stores/session.js'
+import { useApi } from './composables/useApi.js'
+import { useFileUpload } from './composables/useFileUpload.js'
+import { useProgress } from './composables/useProgress.js'
 
-export default {
-  name: 'App',
-  setup() {
-    const sessionStore = useSessionStore()
+const sessionStore = useSessionStore()
+const api = useApi()
+const fileUpload = useFileUpload()
+const progress = useProgress()
 
-    // Initialize a demo session on component mount
-    if (!sessionStore.hasSession) {
-      sessionStore.createSession(`demo-session-${Date.now()}`)
+// UI state
+const isDragOver = ref(false)
+const fileInput = ref(null)
+
+/**
+ * Initialize a new session on app mount
+ */
+onMounted(async () => {
+  if (!sessionStore.hasSession) {
+    try {
+      const response = await api.createSession()
+      sessionStore.createSession(response.session_id)
+    } catch (error) {
+      console.error('Failed to create session:', error)
+      sessionStore.setError('Failed to initialize session')
     }
+  }
+})
 
-    const getStatusColor = status => {
-      const colors = {
-        idle: 'bg-gray-100 text-gray-800',
-        uploading: 'bg-primary-100 text-primary-800',
-        processing: 'bg-warning-100 text-warning-800',
-        completed: 'bg-success-100 text-success-800',
-        error: 'bg-error-100 text-error-800',
+/**
+ * Watch for file uploads and update session store
+ */
+watch(
+  () => fileUpload.files,
+  files => {
+    sessionStore.clearFiles()
+    files.forEach(file => {
+      if (file.status === 'completed') {
+        sessionStore.addFile({
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })
       }
-      return colors[status] || 'bg-gray-100 text-gray-800'
-    }
-
-    return {
-      sessionStore,
-      getStatusColor,
-    }
+    })
   },
+  { deep: true }
+)
+
+/**
+ * Status color helper for legacy template usage
+ */
+const getStatusColor = status => {
+  const colors = {
+    idle: 'bg-gray-100 text-gray-800',
+    uploading: 'bg-primary-100 text-primary-800',
+    processing: 'bg-warning-100 text-warning-800',
+    completed: 'bg-success-100 text-success-800',
+    error: 'bg-error-100 text-error-800',
+  }
+  return colors[status] || 'bg-gray-100 text-gray-800'
 }
+
+/**
+ * Trigger file input click
+ */
+function triggerFileInput() {
+  fileInput.value?.click()
+}
+
+/**
+ * Handle file selection from input
+ */
+function handleFileSelect(event) {
+  const files = event.target.files
+  if (files && files.length > 0) {
+    fileUpload.addFiles(files)
+    event.target.value = '' // Clear input for reselection
+  }
+}
+
+/**
+ * Handle file drop
+ */
+function handleFileDrop(event) {
+  isDragOver.value = false
+  const files = event.dataTransfer.files
+  if (files && files.length > 0) {
+    fileUpload.addFiles(files)
+  }
+}
+
+/**
+ * Upload all selected files to the current session
+ */
+async function handleUploadFiles() {
+  if (!sessionStore.hasSession) {
+    sessionStore.setError('No active session')
+    return
+  }
+
+  try {
+    sessionStore.setProcessingStatus('uploading')
+    const results = await fileUpload.uploadAllFiles(sessionStore.sessionId)
+
+    // Check for upload failures
+    const failures = results.filter(r => !r.success)
+    if (failures.length > 0) {
+      sessionStore.setError(`Failed to upload ${failures.length} file(s)`)
+    } else {
+      sessionStore.setProcessingStatus('idle')
+    }
+  } catch (error) {
+    console.error('Upload error:', error)
+    sessionStore.setError(`Upload failed: ${error.message}`)
+  }
+}
+
+/**
+ * Start processing uploaded files
+ */
+async function handleStartProcessing() {
+  if (!sessionStore.hasSession || !sessionStore.hasFiles) {
+    return
+  }
+
+  try {
+    sessionStore.setProcessingStatus('processing')
+    await api.startProcessing(sessionStore.sessionId)
+
+    // Start polling for progress
+    progress.startPolling(sessionStore.sessionId)
+  } catch (error) {
+    console.error('Processing error:', error)
+    sessionStore.setError(`Failed to start processing: ${error.message}`)
+  }
+}
+
+/**
+ * Watch progress updates and sync with session store
+ */
+watch(
+  () => progress.status,
+  status => {
+    if (status === 'completed') {
+      sessionStore.setProcessingStatus('completed')
+      // TODO: Fetch and set results
+    } else if (status === 'error') {
+      sessionStore.setProcessingStatus('error')
+      if (progress.error) {
+        sessionStore.setError(progress.error)
+      }
+    } else if (['processing', 'extracting', 'analyzing'].includes(status)) {
+      sessionStore.setProcessingStatus('processing')
+    }
+  }
+)
 </script>

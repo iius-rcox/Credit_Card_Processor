@@ -1,0 +1,522 @@
+[
+  {
+    "test_name": "Server Health Check",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.338615",
+    "details": {
+      "url": "http://127.0.0.1:8001/docs"
+    },
+    "status_code": 200,
+    "response_body": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <link type=\"text/css\" rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css\">\n    <link rel=\"shortcut icon\" href=\"https://fastapi.tiangolo.com/img/favicon.png\">\n    <title>Credit Card Processor - Swagger UI</title>\n    </head>\n    <body>\n    <div id=\"swagger-ui\">\n    </div>\n    <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js\"></script>\n    <!-- `SwaggerUIBundle` is now available on the page -->\n    <script>\n    const ui = SwaggerUIBundle({\n        url: '/openapi.json',\n    \"dom_id\": \"#swagger-ui\",\n\"layout\": \"BaseLayout\",\n\"deepLinking\": true,\n\"showExtensions\": true,\n\"showCommonExtensions\": true,\noauth2RedirectUrl: window.location.origin + '/docs/oauth2-redirect',\n    presets: [\n        SwaggerUIBundle.presets.apis,\n        SwaggerUIBundle.SwaggerUIStandalonePreset\n        ],\n    })\n    </script>\n    </body>\n    </html>\n    "
+  },
+  {
+    "test_name": "Create Session",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.350730",
+    "details": {
+      "request_data": {
+        "session_name": "API Test Session - c3b311a2",
+        "processing_options": {
+          "skip_duplicates": true,
+          "validation_threshold": 0.05,
+          "auto_resolve_minor": false
+        }
+      },
+      "session_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+      "session_name": "API Test Session - c3b311a2",
+      "status": "pending"
+    },
+    "status_code": 201,
+    "response_body": {
+      "session_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+      "session_name": "API Test Session - c3b311a2",
+      "status": "pending",
+      "created_by": "DOMAIN\\rcox",
+      "created_at": "2025-08-30T01:09:43.347306",
+      "updated_at": "2025-08-30T01:09:43.347309",
+      "total_employees": 0,
+      "processed_employees": 0,
+      "processing_options": {
+        "skip_duplicates": true,
+        "validation_threshold": 0.05,
+        "auto_resolve_minor": false
+      },
+      "delta_session_id": null
+    }
+  },
+  {
+    "test_name": "Create Session - Validation Error",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.352350",
+    "details": {
+      "expected_status": 422
+    }
+  },
+  {
+    "test_name": "Get Session",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.354680",
+    "details": {
+      "session_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+      "retrieved_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+      "session_name": "API Test Session - c3b311a2",
+      "status": "pending"
+    },
+    "status_code": 200,
+    "response_body": {
+      "session_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+      "session_name": "API Test Session - c3b311a2",
+      "status": "pending",
+      "created_by": "DOMAIN\\rcox",
+      "created_at": "2025-08-30T01:09:43.347306",
+      "updated_at": "2025-08-30T01:09:43.347309",
+      "total_employees": 0,
+      "processed_employees": 0,
+      "processing_options": {
+        "skip_duplicates": true,
+        "validation_threshold": 0.05,
+        "auto_resolve_minor": false
+      },
+      "delta_session_id": null
+    }
+  },
+  {
+    "test_name": "Get Session - Not Found",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.356301",
+    "details": {
+      "fake_id": "56fdc318-2dce-4c39-88de-f9bddeec745e",
+      "expected_status": 404
+    }
+  },
+  {
+    "test_name": "Get Session - Invalid UUID",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.357484",
+    "details": {
+      "invalid_id": "invalid-uuid-format",
+      "expected_status": 400
+    }
+  },
+  {
+    "test_name": "List Sessions",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.361336",
+    "details": {
+      "total_count": 19,
+      "page": 1,
+      "page_size": 20,
+      "sessions_count": 19
+    },
+    "status_code": 200,
+    "response_body": {
+      "sessions": [
+        {
+          "session_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+          "session_name": "API Test Session - c3b311a2",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:09:43.347306",
+          "updated_at": "2025-08-30T01:09:43.347309",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "1056b626-c6ad-4f67-8740-6c461ef0fa5a",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.692549",
+          "updated_at": "2025-08-30T01:01:04.692549",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "a3fbbbf8-5c3b-4c46-b581-b526c76ad2ab",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.690183",
+          "updated_at": "2025-08-30T01:01:04.690184",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "d13330d3-a9ff-4c43-9788-89862e6f9015",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.687860",
+          "updated_at": "2025-08-30T01:01:04.687861",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "abf45945-db1d-4f90-b7df-b223f6ea3273",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.685388",
+          "updated_at": "2025-08-30T01:01:04.685389",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "1537a6c7-1322-493d-8cdc-daf6cc81f821",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.683041",
+          "updated_at": "2025-08-30T01:01:04.683042",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "753a789d-9b2f-419f-badd-125ed2b7e602",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:01:04.680364",
+          "updated_at": "2025-08-30T01:01:04.680365",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "3ab62810-57a9-4f5f-b7ee-d80a756debf0",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:01:04.677945",
+          "updated_at": "2025-08-30T01:01:04.677946",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "a5c1936a-5b77-483a-9acf-71269e5f7535",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:01:04.675573",
+          "updated_at": "2025-08-30T01:01:04.675573",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "d50d37a7-8867-47b3-a8f4-8a2abbcdd97a",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:01:04.672975",
+          "updated_at": "2025-08-30T01:01:04.672976",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "55b955de-33f4-4463-ba2b-b2ab5c82b125",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:01:04.668516",
+          "updated_at": "2025-08-30T01:01:04.668518",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "02359402-c4dc-42eb-be4b-0aac58adf568",
+          "session_name": "Regular User Session",
+          "status": "pending",
+          "created_by": "DOMAIN\\regularuser",
+          "created_at": "2025-08-29T23:27:28.290892",
+          "updated_at": "2025-08-29T23:27:28.290893",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "bfc91002-09de-4180-8814-a795ead4d9cc",
+          "session_name": "QA Integration Test Session",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-29T23:27:28.277990",
+          "updated_at": "2025-08-29T23:27:28.277992",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "87a3011b-ced0-4409-8356-cb80e9bce59c",
+          "session_name": "Test Session",
+          "status": "pending",
+          "created_by": "test_user",
+          "created_at": "2025-08-29T23:15:06.070436",
+          "updated_at": "2025-08-29T23:15:06.070440",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "test": true
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "50e6a090-0d2e-4371-a85d-5f36e022845f",
+          "session_name": "Test Session",
+          "status": "pending",
+          "created_by": "test_user",
+          "created_at": "2025-08-29T23:14:31.930960",
+          "updated_at": "2025-08-29T23:14:31.930964",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "test": true
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "aa2132ec-e022-453d-9205-f177c596d487",
+          "session_name": "Test Session",
+          "status": "pending",
+          "created_by": "test_user",
+          "created_at": "2025-08-29T23:02:18.631711",
+          "updated_at": "2025-08-29T23:02:18.631714",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "test": true
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "6c5375ae-7b04-4969-b7a6-caa4905e4f82",
+          "session_name": "February 2024 Processing",
+          "status": "processing",
+          "created_by": "mikeh",
+          "created_at": "2025-08-29T21:42:29.149346",
+          "updated_at": "2025-08-29T21:42:29.149346",
+          "total_employees": 8,
+          "processed_employees": 3,
+          "processing_options": {
+            "auto_resolve_threshold": 10.0,
+            "validation_rules": [
+              "amount_match",
+              "name_validation",
+              "duplicate_check"
+            ],
+            "export_format": "csv"
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "86656f2c-448b-4b9d-96ae-984c06deab83",
+          "session_name": "January 2024 Processing",
+          "status": "completed",
+          "created_by": "rcox",
+          "created_at": "2025-08-29T21:42:29.148325",
+          "updated_at": "2025-08-29T21:42:29.148328",
+          "total_employees": 15,
+          "processed_employees": 15,
+          "processing_options": {
+            "auto_resolve_threshold": 5.0,
+            "validation_rules": [
+              "amount_match",
+              "name_validation"
+            ],
+            "export_format": "excel"
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "be26c9a0-08ed-44b5-96d1-076899b6d577",
+          "session_name": "Test Session",
+          "status": "processing",
+          "created_by": "test_user",
+          "created_at": "2025-08-29T21:42:24.772004",
+          "updated_at": "2025-08-29T21:42:24.774855",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "test": true
+          },
+          "delta_session_id": null
+        }
+      ],
+      "total_count": 19,
+      "page": 1,
+      "page_size": 20
+    }
+  },
+  {
+    "test_name": "List Sessions - Pagination",
+    "success": true,
+    "timestamp": "2025-08-29T21:09:43.363487",
+    "details": {
+      "params": "page=1&page_size=5",
+      "page": 1,
+      "page_size": 5,
+      "total_count": 19
+    },
+    "status_code": 200,
+    "response_body": {
+      "sessions": [
+        {
+          "session_id": "8d7ae2b8-3ec4-44ee-bd7d-875c922866d1",
+          "session_name": "API Test Session - c3b311a2",
+          "status": "pending",
+          "created_by": "DOMAIN\\rcox",
+          "created_at": "2025-08-30T01:09:43.347306",
+          "updated_at": "2025-08-30T01:09:43.347309",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "1056b626-c6ad-4f67-8740-6c461ef0fa5a",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.692549",
+          "updated_at": "2025-08-30T01:01:04.692549",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "a3fbbbf8-5c3b-4c46-b581-b526c76ad2ab",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.690183",
+          "updated_at": "2025-08-30T01:01:04.690184",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "d13330d3-a9ff-4c43-9788-89862e6f9015",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.687860",
+          "updated_at": "2025-08-30T01:01:04.687861",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        },
+        {
+          "session_id": "abf45945-db1d-4f90-b7df-b223f6ea3273",
+          "session_name": "Performance Test Session 1756515664",
+          "status": "pending",
+          "created_by": "DOMAIN\\testuser",
+          "created_at": "2025-08-30T01:01:04.685388",
+          "updated_at": "2025-08-30T01:01:04.685389",
+          "total_employees": 0,
+          "processed_employees": 0,
+          "processing_options": {
+            "skip_duplicates": true,
+            "validation_threshold": 0.05,
+            "auto_resolve_minor": false
+          },
+          "delta_session_id": null
+        }
+      ],
+      "total_count": 19,
+      "page": 1,
+      "page_size": 5
+    }
+  }
+]

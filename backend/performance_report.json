@@ -1,0 +1,123 @@
+{
+  "timestamp": "2025-08-29 20:36:25",
+  "system_info": {
+    "python_version": "3.13.7 (main, Aug 14 2025, 11:12:11) [Clang 17.0.0 (clang-1700.0.13.3)]",
+    "platform": "darwin",
+    "cpu_count": 8,
+    "memory_total_mb": 16384.0
+  },
+  "api_performance": {
+    "GET__health": {
+      "endpoint": "/health",
+      "method": "GET",
+      "iterations": 50,
+      "success_rate": 100.0,
+      "avg_response_time_ms": 0.9576300001936033,
+      "min_response_time_ms": 0.811249999969732,
+      "max_response_time_ms": 3.755167002964299,
+      "median_response_time_ms": 0.8822915006021503,
+      "p95_response_time_ms": 1.0505272039154079,
+      "p99_response_time_ms": 2.474163921360736,
+      "requests_per_second": 1044.2446454244653,
+      "std_dev_ms": 0.4098560230251054
+    },
+    "GET__": {
+      "endpoint": "/",
+      "method": "GET",
+      "iterations": 50,
+      "success_rate": 100.0,
+      "avg_response_time_ms": 0.8892992198525462,
+      "min_response_time_ms": 0.8312499994644895,
+      "max_response_time_ms": 1.219124998897314,
+      "median_response_time_ms": 0.8757920004427433,
+      "p95_response_time_ms": 0.9658437509642681,
+      "p99_response_time_ms": 1.112529418242047,
+      "requests_per_second": 1124.4809144955834,
+      "std_dev_ms": 0.0629638899994837
+    },
+    "GET__api_auth_status": {
+      "endpoint": "/api/auth/status",
+      "method": "GET",
+      "iterations": 50,
+      "success_rate": 100.0,
+      "avg_response_time_ms": 1.0558058599417564,
+      "min_response_time_ms": 0.9376250018249266,
+      "max_response_time_ms": 1.8645420059328899,
+      "median_response_time_ms": 1.0276454995619133,
+      "p95_response_time_ms": 1.2197937474411442,
+      "p99_response_time_ms": 1.6365489242889444,
+      "requests_per_second": 947.1438243913186,
+      "std_dev_ms": 0.14040244225994475
+    },
+    "GET__api_auth_current-user": {
+      "endpoint": "/api/auth/current-user",
+      "method": "GET",
+      "iterations": 50,
+      "success_rate": 0,
+      "error": "All requests failed"
+    },
+    "GET__api_sessions": {
+      "endpoint": "/api/sessions",
+      "method": "GET",
+      "iterations": 50,
+      "success_rate": 0,
+      "error": "All requests failed"
+    },
+    "POST__api_sessions": {
+      "endpoint": "/api/sessions",
+      "method": "POST",
+      "iterations": 20,
+      "success_rate": 0,
+      "error": "All requests failed"
+    }
+  },
+  "database_performance": {
+    "query_1": {
+      "query": "SELECT COUNT(*) FROM processing_sessions",
+      "iterations": 100,
+      "avg_response_time_ms": 0.1279154400981497,
+      "min_response_time_ms": 0.11649999942164868,
+      "max_response_time_ms": 0.31887499790173024,
+      "median_response_time_ms": 0.12177099779364653,
+      "p95_response_time_ms": 0.14938365420675834,
+      "queries_per_second": 7817.664538641297
+    },
+    "query_2": {
+      "query": "SELECT * FROM processing_sessions ORDER BY created_at DESC LIMIT 10",
+      "iterations": 100,
+      "avg_response_time_ms": 0.17903320978803094,
+      "min_response_time_ms": 0.1356249995296821,
+      "max_response_time_ms": 2.906790999986697,
+      "median_response_time_ms": 0.1450415002182126,
+      "p95_response_time_ms": 0.1907101002871059,
+      "queries_per_second": 5585.555893143875
+    },
+    "query_3": {
+      "query": "SELECT * FROM processing_sessions WHERE status = ?",
+      "iterations": 100,
+      "avg_response_time_ms": 0.13045915969996713,
+      "min_response_time_ms": 0.11820899817394093,
+      "max_response_time_ms": 0.2267500021844171,
+      "median_response_time_ms": 0.12425000022631139,
+      "p95_response_time_ms": 0.16871250300027896,
+      "queries_per_second": 7665.234103146319
+    },
+    "query_4": {
+      "query": "SELECT ps.*, COUNT(er.revision_id) as revision_count FROM processing_sessions ps LEFT JOIN employee_...",
+      "iterations": 100,
+      "avg_response_time_ms": 0.20227585038810503,
+      "min_response_time_ms": 0.14287499652709812,
+      "max_response_time_ms": 5.028625004342757,
+      "median_response_time_ms": 0.14875049964757636,
+      "p95_response_time_ms": 0.18283749413967598,
+      "queries_per_second": 4943.74389271536
+    }
+  },
+  "memory_usage": {
+    "current_memory_mb": 104.5,
+    "virtual_memory_mb": 401564.890625,
+    "cpu_percent": 0.0,
+    "num_threads": 1,
+    "open_files": 94
+  }
+}

@@ -1,0 +1,85 @@
+services:
+  # Backend service - FastAPI with hot reload
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: credit-card-backend-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reload
+      - ./backend/app:/app/app:cached
+      - ./backend/requirements.txt:/app/requirements.txt:ro
+      # Persistent data storage
+      - ./backend/data:/app/data:cached
+    environment:
+      # Development environment settings
+      - ENVIRONMENT=development
+      - DATABASE_URL=sqlite:///./data/database.db
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - LOG_LEVEL=debug
+      # Hot reload settings
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    networks:
+      - credit-card-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Frontend service - Vue 3 + Vite with hot reload
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: credit-card-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - ./frontend/package.json:/app/package.json:ro
+      - ./frontend/package-lock.json:/app/package-lock.json:ro
+      - ./frontend/vite.config.js:/app/vite.config.js:ro
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js:ro
+      - ./frontend/postcss.config.js:/app/postcss.config.js:ro
+      - ./frontend/index.html:/app/index.html:ro
+      # Exclude node_modules to prevent conflicts
+      - /app/node_modules
+    environment:
+      # Vite development settings
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_APP_TITLE=Credit Card Processor (Dev)
+      # Enable hot reload
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    networks:
+      - credit-card-network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  credit-card-network:
+    driver: bridge
+    name: credit-card-dev-network
+
+# Development volumes for data persistence
+volumes:
+  backend_data:
+    driver: local
+    name: credit-card-backend-data-dev

@@ -418,7 +418,7 @@ async def process_session(session_id: str, config: dict):
 **Requirements**:
 - Simulate processing 45 employees with realistic timing
 - Generate employee data with names, IDs, financial amounts
-- Create validation issues for some employees (every 7th)
+- Create validation issues for some employees (every 20th)
 - Update progress incrementally with activities
 - Complete processing with final status
 

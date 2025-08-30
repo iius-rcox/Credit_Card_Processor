@@ -1,0 +1,19 @@
+AUTHENTICATION PERFORMANCE VALIDATION REPORT
+============================================================
+Generated: 2025-08-30T00:58:28.347499
+Duration: 1.3 seconds
+
+OVERALL SCORE: 0.0/300 (0.0%)
+GRADE: D (Unacceptable)
+STATUS: CRITICAL_ISSUES_BLOCKING
+
+TEST RESULTS:
+  Performance Tests: ❌ FAILED
+  Integration Tests: ❌ FAILED
+  Existing Tests:    ❌ FAILED
+
+RECOMMENDATIONS:
+  • CRITICAL: Fix existing session API tests - regression detected
+  • HIGH: Address authentication performance issues
+  • HIGH: Fix authentication integration workflow issues
+  • BLOCKER: Test score below acceptable threshold - do not deploy
