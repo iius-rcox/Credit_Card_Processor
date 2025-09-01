@@ -1,298 +1,144 @@
 <template>
-  <div id="app" class="min-h-screen bg-gray-50">
+  <ErrorBoundary>
+    <div id="app" class="min-h-screen bg-neutral-50">
+      <!-- Skip Navigation Link -->
+      <a 
+        href="#main-content" 
+        class="skip-link sr-only focus:not-sr-only"
+        @focus="announceSkipLink"
+      >
+        Skip to main content
+      </a>
+    
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b border-gray-200">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
+    <header class="app-header bg-white shadow-card border-b border-neutral-300">
+      <div class="container-responsive">
+        <div class="flex justify-between items-center h-full">
           <div class="flex items-center">
-            <h1 class="text-xl font-semibold text-gray-900">
-              Credit Card Processor
+            <h1 class="logo text-neutral-900" role="banner">
+              <span class="desktop-only">Credit Card Processor</span>
+              <span class="tablet-only">Credit Card Proc</span>
+              <span class="mobile-only">CCP</span>
             </h1>
           </div>
-          <div class="flex items-center space-x-4">
-            <div v-if="sessionStore.hasSession" class="text-sm text-gray-600">
-              Session: {{ sessionStore.sessionId }}
-            </div>
-            <div class="flex items-center space-x-2">
+          <div class="nav-items flex items-center">
+            <!-- Session Status -->
+            <div v-if="sessionStore.hasSession" class="hidden sm:flex items-center space-x-2 text-secondary">
               <div
                 :class="[
-                  'w-3 h-3 rounded-full',
-                  sessionStore.hasSession ? 'bg-success-500' : 'bg-gray-300',
+                  'w-2 h-2 rounded-full',
+                  sessionStore.hasSession ? 'bg-success-500' : 'bg-neutral-400',
                 ]"
-                :title="sessionStore.hasSession ? 'Connected' : 'No Session'"
+                :title="sessionStore.hasSession ? 'Session Active' : 'No Session'"
               ></div>
-              <span class="text-sm text-gray-600">
-                {{ sessionStore.hasSession ? 'Connected' : 'Disconnected' }}
-              </span>
+              <span>Session: {{ sessionStore.sessionId?.slice(-8) }}</span>
             </div>
+
+            <!-- Windows Authentication Display -->
+            <AuthDisplay 
+              layout="header" 
+              variant="minimal"
+              :show-details="false"
+              :show-admin-access="true"
+              :show-logout="false"
+              @admin-panel-clicked="handleAdminPanel"
+              @auth-error="handleAuthError"
+            />
           </div>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div class="space-y-8">
-        <!-- Welcome Card -->
-        <div class="card">
-          <div class="text-center">
-            <h2 class="text-2xl font-bold text-gray-900 mb-4">
-              Welcome to Credit Card Processor
-            </h2>
-            <p class="text-gray-600 mb-6">
-              Upload your PDF documents to extract and process credit card data
-              efficiently.
-            </p>
-
-            <!-- Status Display -->
-            <div class="inline-flex items-center space-x-4 text-sm">
-              <div class="flex items-center space-x-2">
-                <span class="text-gray-500">Status:</span>
-                <span
-                  :class="getStatusColor(sessionStore.processingStatus)"
-                  class="px-2 py-1 rounded-full text-xs font-medium capitalize"
-                >
-                  {{ sessionStore.processingStatus }}
-                </span>
-              </div>
-              <div
-                v-if="sessionStore.hasFiles"
-                class="flex items-center space-x-2"
-              >
-                <span class="text-gray-500">Files:</span>
-                <span class="text-gray-900 font-medium">
-                  {{ sessionStore.uploadedFiles.length }}
-                </span>
-              </div>
-            </div>
-          </div>
+    <main id="main-content" class="container-responsive main-content" role="main">
+      <div class="content-section">
+        <!-- Session Setup (when no active session) -->
+        <div v-if="!sessionStore.hasSession">
+          <SessionSetup 
+            @session-created="handleSessionCreated"
+            @session-resumed="handleSessionResumed"
+          />
         </div>
 
-        <!-- File Upload Section -->
-        <div class="card">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">File Upload</h3>
-          <div
-            :class="[
-              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
-              isDragOver
-                ? 'border-blue-400 bg-blue-50'
-                : 'border-gray-300 hover:border-gray-400',
-            ]"
-            @drop.prevent="handleFileDrop"
-            @dragover.prevent="isDragOver = true"
-            @dragleave.prevent="isDragOver = false"
-            @click="triggerFileInput"
-          >
-            <input
-              ref="fileInput"
-              type="file"
-              multiple
-              accept=".pdf,application/pdf"
-              class="hidden"
-              @change="handleFileSelect"
-            />
-            <div class="text-gray-500">
-              <svg
-                class="mx-auto h-12 w-12 text-gray-400"
-                stroke="currentColor"
-                fill="none"
-                viewBox="0 0 48 48"
-              >
-                <path
-                  d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              <p class="mt-2 text-sm">
-                {{
-                  isDragOver
-                    ? 'Drop files here'
-                    : 'Click to upload or drag and drop PDF files here'
-                }}
-              </p>
-              <p class="text-xs text-gray-400 mt-1">
-                Supported formats: PDF (max 10MB per file)
-              </p>
-            </div>
-          </div>
-
-          <!-- File List -->
-          <div v-if="fileUpload.hasFiles" class="mt-4">
-            <h4 class="text-sm font-medium text-gray-900 mb-2">
-              Selected Files
-            </h4>
-            <div class="space-y-2">
-              <div
-                v-for="file in fileUpload.files"
-                :key="file.id"
-                class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
-              >
-                <div class="flex items-center space-x-3">
-                  <svg
-                    class="h-8 w-8 text-red-600"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
+        <!-- Active Session Content -->
+        <div v-else>
+          <!-- Session Header -->
+          <div class="card card-responsive">
+            <div class="card-header-responsive">
+              <div>
+                <h2 class="card-title-responsive text-neutral-900 mb-2">
+                  {{ sessionStore.currentSession?.session_name || 'Active Session' }}
+                </h2>
+                <div class="flex flex-wrap items-center gap-2 tablet:gap-4 text-secondary">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-neutral-500">Status:</span>
+                    <span
+                      :class="getStatusBadgeClasses(sessionStore.processingStatus)"
+                      class="status-badge"
+                    >
+                      {{ formatStatus(sessionStore.processingStatus) }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="sessionStore.hasFiles"
+                    class="flex items-center space-x-2"
                   >
-                    <path
-                      fill-rule="evenodd"
-                      d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
-                  <div>
-                    <p class="text-sm font-medium text-gray-900">
-                      {{ file.name }}
-                    </p>
-                    <p class="text-xs text-gray-500">
-                      {{ fileUpload.formatFileSize(file.size) }}
-                    </p>
-                    <div v-if="file.status === 'uploading'" class="mt-1">
-                      <div class="w-32 bg-gray-200 rounded-full h-1">
-                        <div
-                          class="bg-blue-600 h-1 rounded-full transition-all"
-                          :style="{
-                            width: `${fileUpload.uploadProgress[file.id] || 0}%`,
-                          }"
-                        ></div>
-                      </div>
-                    </div>
+                    <span class="text-neutral-500 tablet-up">Files:</span>
+                    <span class="text-neutral-500 mobile-only">F:</span>
+                    <span class="text-neutral-900 font-medium">
+                      {{ sessionStore.uploadedFiles.length }}
+                    </span>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-neutral-500 tablet-up">Session ID:</span>
+                    <span class="text-neutral-500 mobile-only">ID:</span>
+                    <span class="text-neutral-900 font-mono text-small-text">
+                      {{ sessionStore.sessionId?.slice(-8) }}
+                    </span>
                   </div>
                 </div>
-                <div class="flex items-center space-x-2">
-                  <span
-                    :class="[
-                      'px-2 py-1 rounded-full text-xs font-medium',
-                      file.status === 'completed'
-                        ? 'bg-green-100 text-green-800'
-                        : file.status === 'error'
-                          ? 'bg-red-100 text-red-800'
-                          : file.status === 'uploading'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800',
-                    ]"
-                  >
-                    {{ file.status }}
-                  </span>
-                  <button
-                    class="text-red-600 hover:text-red-800"
-                    @click="fileUpload.removeFile(file.id)"
-                  >
-                    <svg
-                      class="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
               </div>
-            </div>
-
-            <!-- Upload Actions -->
-            <div class="mt-4 flex items-center justify-between">
-              <div class="text-sm text-gray-600">
-                {{ fileUpload.totalFiles }} file(s) selected,
-                {{ fileUpload.completedFiles }} uploaded
-              </div>
-              <div class="space-x-2">
-                <button
-                  class="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-                  @click="fileUpload.clearFiles"
-                >
-                  Clear All
-                </button>
-                <button
-                  :disabled="
-                    !fileUpload.hasPendingFiles || !sessionStore.hasSession
-                  "
-                  class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  @click="handleUploadFiles"
-                >
-                  {{ fileUpload.isUploading ? 'Uploading...' : 'Upload Files' }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Processing Status -->
-        <div v-if="progress.isProcessing || progress.isComplete" class="card">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">
-            Processing Status
-          </h3>
-          <div class="space-y-4">
-            <div class="w-full bg-gray-200 rounded-full h-3">
-              <div
-                :class="[
-                  'h-3 rounded-full transition-all duration-300',
-                  progress.progressColor,
-                ]"
-                :style="{ width: `${progress.progressPercentage}%` }"
-              ></div>
-            </div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-600">{{ progress.statusLabel }}</span>
-              <span class="font-medium"
-                >{{ progress.progressPercentage }}%</span
-              >
-            </div>
-            <div
-              v-if="progress.message"
-              class="text-sm text-gray-600 text-center"
-            >
-              {{ progress.message }}
-            </div>
-            <div
-              v-if="progress.estimatedTimeRemaining"
-              class="text-xs text-gray-500 text-center"
-            >
-              {{ progress.estimatedTimeRemaining }}
-            </div>
-
-            <!-- Processing Actions -->
-            <div
-              v-if="sessionStore.hasFiles && !progress.isPolling"
-              class="text-center"
-            >
+              
               <button
-                :disabled="!sessionStore.hasSession || progress.isProcessing"
-                class="px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                @click="handleStartProcessing"
+                @click="handleNewSession"
+                class="btn-secondary btn-small btn-responsive touch-friendly mt-2 tablet:mt-0"
+                aria-label="Start a new processing session"
+                :disabled="sessionStore.isProcessing"
               >
-                Start Processing
+                New Session
               </button>
             </div>
           </div>
+
+          <!-- File Upload Section -->
+          <FileUpload
+            :session-id="sessionStore.sessionId"
+            @upload-complete="handleUploadComplete"
+            @upload-error="handleUploadError"
+          />
+        </div>
+
+        <!-- Progress Tracker -->
+        <div v-if="sessionStore.hasFiles">
+          <ProgressTracker :session-id="sessionStore.sessionId" />
         </div>
 
         <!-- Results Section -->
-        <div v-if="sessionStore.hasResults" class="card">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">
-            Processing Results
-          </h3>
-          <div class="text-center text-gray-600">
-            <p>Results will be displayed here once processing is complete.</p>
-          </div>
+        <div v-if="sessionStore.hasResults">
+          <ResultsDisplay :session-id="sessionStore.sessionId" />
+        </div>
+
+        <!-- Export Section -->
+        <div v-if="sessionStore.canExport">
+          <ExportActions />
         </div>
 
         <!-- Error Display -->
-        <div
-          v-if="sessionStore.hasError"
-          class="card border-error-200 bg-error-50"
-        >
+        <div v-if="sessionStore.hasError" class="notification error">
           <div class="flex items-center space-x-3">
             <div class="flex-shrink-0">
               <svg
-                class="h-5 w-5 text-error-400"
+                class="h-5 w-5 text-error-500"
                 viewBox="0 0 20 20"
                 fill="currentColor"
               >
@@ -304,166 +150,277 @@
               </svg>
             </div>
             <div>
-              <h4 class="text-sm font-medium text-error-800">Error</h4>
-              <p class="text-sm text-error-700 mt-1">
+              <h4 class="text-body-secondary font-medium text-error-800">Error</h4>
+              <p class="text-body-secondary text-error-700 mt-1">
                 {{ sessionStore.error }}
               </p>
+              <button
+                @click="sessionStore.setError(null)"
+                class="mt-2 text-small-text text-error-600 hover:text-error-800 underline"
+                aria-label="Dismiss error message"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
       </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 mt-12">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <p class="text-center text-sm text-gray-500">
-          Credit Card Processor v1.0.0 - Built with Vue 3, Vite & Tailwind CSS
-        </p>
-      </div>
-    </footer>
-  </div>
+      <!-- Footer -->
+      <footer class="bg-white border-t border-neutral-300 mt-8 tablet:mt-12 desktop:mt-xxl">
+        <div class="container-responsive py-4">
+          <p class="text-center text-small-text text-neutral-600">
+            <span class="desktop-only">Credit Card Processor v1.0.0 - Built with Vue 3, Vite & Tailwind CSS</span>
+            <span class="tablet-only">Credit Card Processor v1.0.0</span>
+            <span class="mobile-only">CCP v1.0.0</span>
+          </p>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Global Notification Container -->
+    <NotificationContainer />
+
+    <!-- ARIA Live Region for Announcements -->
+    <div 
+      class="sr-only" 
+      aria-live="polite" 
+      aria-atomic="false"
+      id="aria-live-region"
+    >
+      {{ announcements }}
+    </div>
+  </ErrorBoundary>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useSessionStore } from './stores/session.js'
+import { useNotificationStore } from './stores/notification.js'
 import { useApi } from './composables/useApi.js'
-import { useFileUpload } from './composables/useFileUpload.js'
 import { useProgress } from './composables/useProgress.js'
+import AuthDisplay from './components/shared/AuthDisplay.vue'
+import SessionSetup from './components/core/SessionSetup.vue'
+import ErrorBoundary from './components/shared/ErrorBoundary.vue'
+import NotificationContainer from './components/shared/NotificationContainer.vue'
+
+// Lazy-load components for better performance
+const FileUpload = defineAsyncComponent(
+  () => import('./components/FileUpload.vue')
+)
+const ProgressTracker = defineAsyncComponent(
+  () => import('./components/ProgressTracker.vue')
+)
+const ResultsDisplay = defineAsyncComponent(
+  () => import('./components/ResultsDisplay.vue')
+)
+const ExportActions = defineAsyncComponent(
+  () => import('./components/ExportActions.vue')
+)
 
 const sessionStore = useSessionStore()
+const notificationStore = useNotificationStore()
 const api = useApi()
-const fileUpload = useFileUpload()
 const progress = useProgress()
 
-// UI state
-const isDragOver = ref(false)
-const fileInput = ref(null)
+// Accessibility state
+const announcements = ref('')
 
 /**
- * Initialize a new session on app mount
+ * Initialize app without auto-creating session
  */
 onMounted(async () => {
-  if (!sessionStore.hasSession) {
-    try {
-      const response = await api.createSession()
-      sessionStore.createSession(response.session_id)
-    } catch (error) {
-      console.error('Failed to create session:', error)
-      sessionStore.setError('Failed to initialize session')
-    }
-  }
+  // Let users choose their session instead of auto-creating
+  // This provides better UX and follows Task 6.2 requirements
+  
+  // Set up global error handling
+  setupGlobalErrorHandling()
+  
+  // Set up online/offline detection
+  setupConnectionMonitoring()
 })
 
 /**
- * Watch for file uploads and update session store
+ * Set up global error handling for API calls
  */
-watch(
-  () => fileUpload.files,
-  files => {
-    sessionStore.clearFiles()
-    files.forEach(file => {
-      if (file.status === 'completed') {
-        sessionStore.addFile({
-          id: file.id,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })
-      }
-    })
-  },
-  { deep: true }
-)
-
-/**
- * Status color helper for legacy template usage
- */
-const getStatusColor = status => {
-  const colors = {
-    idle: 'bg-gray-100 text-gray-800',
-    uploading: 'bg-primary-100 text-primary-800',
-    processing: 'bg-warning-100 text-warning-800',
-    completed: 'bg-success-100 text-success-800',
-    error: 'bg-error-100 text-error-800',
-  }
-  return colors[status] || 'bg-gray-100 text-gray-800'
-}
-
-/**
- * Trigger file input click
- */
-function triggerFileInput() {
-  fileInput.value?.click()
-}
-
-/**
- * Handle file selection from input
- */
-function handleFileSelect(event) {
-  const files = event.target.files
-  if (files && files.length > 0) {
-    fileUpload.addFiles(files)
-    event.target.value = '' // Clear input for reselection
-  }
-}
-
-/**
- * Handle file drop
- */
-function handleFileDrop(event) {
-  isDragOver.value = false
-  const files = event.dataTransfer.files
-  if (files && files.length > 0) {
-    fileUpload.addFiles(files)
-  }
-}
-
-/**
- * Upload all selected files to the current session
- */
-async function handleUploadFiles() {
-  if (!sessionStore.hasSession) {
-    sessionStore.setError('No active session')
-    return
-  }
-
-  try {
-    sessionStore.setProcessingStatus('uploading')
-    const results = await fileUpload.uploadAllFiles(sessionStore.sessionId)
-
-    // Check for upload failures
-    const failures = results.filter(r => !r.success)
-    if (failures.length > 0) {
-      sessionStore.setError(`Failed to upload ${failures.length} file(s)`)
-    } else {
-      sessionStore.setProcessingStatus('idle')
+function setupGlobalErrorHandling() {
+  // Intercept API errors globally
+  api.interceptors?.response?.use(
+    response => response,
+    error => {
+      notificationStore.handleApiError(error)
+      return Promise.reject(error)
     }
-  } catch (error) {
-    console.error('Upload error:', error)
-    sessionStore.setError(`Upload failed: ${error.message}`)
+  )
+}
+
+/**
+ * Set up connection monitoring
+ */
+function setupConnectionMonitoring() {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      notificationStore.addSuccess('Connection restored')
+    })
+    
+    window.addEventListener('offline', () => {
+      notificationStore.handleOffline()
+    })
   }
 }
 
 /**
- * Start processing uploaded files
+ * Announce skip link focus for screen readers
  */
-async function handleStartProcessing() {
-  if (!sessionStore.hasSession || !sessionStore.hasFiles) {
-    return
+function announceSkipLink() {
+  announcements.value = 'Skip to main content link focused. Press Enter to skip navigation.'
+}
+
+/**
+ * Status badge classes helper for template usage (updated for new design system)
+ */
+const getStatusBadgeClasses = status => {
+  const statusMap = {
+    idle: 'idle',
+    pending: 'idle',
+    uploading: 'processing',
+    processing: 'processing',
+    completed: 'completed',
+    error: 'error',
+    failed: 'error',
+    cancelled: 'cancelled',
   }
+  return statusMap[status] || 'idle'
+}
 
-  try {
-    sessionStore.setProcessingStatus('processing')
-    await api.startProcessing(sessionStore.sessionId)
+/**
+ * Status label formatter for consistent display
+ */
+const formatStatus = status => {
+  const statusLabels = {
+    idle: 'Ready',
+    pending: 'Pending',
+    uploading: 'Uploading',
+    processing: 'Processing',
+    completed: 'Complete',
+    error: 'Error',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+  }
+  return statusLabels[status] || status
+}
 
-    // Start polling for progress
+/**
+ * Handle successful file upload
+ */
+function handleUploadComplete(data) {
+  // Upload completed successfully - data processed
+  // Files are automatically added to session store by FileUpload component
+  // Start progress monitoring if processing begins automatically
+  if (sessionStore.processingStatus === 'processing') {
     progress.startPolling(sessionStore.sessionId)
-  } catch (error) {
-    console.error('Processing error:', error)
-    sessionStore.setError(`Failed to start processing: ${error.message}`)
   }
+}
+
+/**
+ * Handle file upload errors
+ */
+function handleUploadError(data) {
+  console.error('Upload error:', data)
+  
+  // Use notification system instead of session store error
+  notificationStore.addError(data.error || 'File upload failed', {
+    title: 'Upload Error',
+    actions: [{
+      label: 'Try Again',
+      handler: () => {
+        // Could implement retry logic here
+        announcements.value = 'You can try uploading the file again'
+      }
+    }]
+  })
+  
+  // Still set in session store for component compatibility
+  sessionStore.setError(data.error)
+}
+
+/**
+ * Handle admin panel access request
+ */
+function handleAdminPanel(user) {
+  console.log('Admin panel access requested for user:', user)
+  
+  // Use notification instead of alert for better accessibility
+  notificationStore.addInfo(`Admin panel access requested for ${user?.username || 'user'}. Feature coming soon!`, {
+    title: 'Admin Panel',
+    duration: 8000
+  })
+  
+  announcements.value = 'Admin panel feature is coming soon'
+}
+
+/**
+ * Handle authentication errors
+ */
+function handleAuthError(error) {
+  console.error('Authentication error:', error)
+  
+  const errorMessage = `Authentication failed: ${error.message || error}`
+  
+  // Use notification system for better UX
+  notificationStore.addError(errorMessage, {
+    title: 'Authentication Error',
+    actions: [{
+      label: 'Refresh Page',
+      handler: () => {
+        window.location.reload()
+      }
+    }]
+  })
+  
+  // Still set in session store for component compatibility
+  sessionStore.setError(errorMessage)
+  
+  announcements.value = 'Authentication error occurred. Please refresh the page.'
+}
+
+/**
+ * Handle session creation from SessionSetup component
+ */
+function handleSessionCreated(event) {
+  console.log('Session created:', event)
+  
+  // Session is already created and stored by SessionSetup component
+  // The session store has been updated via sessionStore.createSession()
+  
+  if (event.isDelta) {
+    console.log('Delta session created against baseline:', event.deltaSessionId)
+  }
+}
+
+/**
+ * Handle session resumption from SessionSetup component
+ */
+function handleSessionResumed(event) {
+  console.log('Session resumed:', event)
+  
+  // Session is already loaded by SessionSetup component
+  // The session store has been updated via sessionStore.switchSession()
+  
+  // Start progress monitoring if session is in processing state
+  if (sessionStore.isProcessing) {
+    progress.startPolling(event.sessionId)
+  }
+}
+
+/**
+ * Handle new session button click
+ */
+function handleNewSession() {
+  // Clear current session to show SessionSetup component
+  sessionStore.clearSession()
+  progress.stopPolling()
 }
 
 /**
@@ -471,10 +428,21 @@ async function handleStartProcessing() {
  */
 watch(
   () => progress.status,
-  status => {
+  (status, oldStatus) => {
+    // Progress status changed - update UI accordingly
+
     if (status === 'completed') {
       sessionStore.setProcessingStatus('completed')
-      // TODO: Fetch and set results
+      // Fetch results when processing is complete
+      api
+        .getResults(sessionStore.sessionId)
+        .then(results => {
+          sessionStore.setResults(results)
+        })
+        .catch(error => {
+          console.error('Failed to fetch results:', error)
+          sessionStore.setError('Failed to fetch processing results')
+        })
     } else if (status === 'error') {
       sessionStore.setProcessingStatus('error')
       if (progress.error) {
@@ -485,4 +453,25 @@ watch(
     }
   }
 )
+
+/**
+ * Watch for session changes and update progress monitoring
+ */
+watch(
+  () => sessionStore.sessionId,
+  (newSessionId, oldSessionId) => {
+    if (newSessionId !== oldSessionId) {
+      progress.resetProgress()
+      if (newSessionId && sessionStore.processingStatus === 'processing') {
+        progress.startPolling(newSessionId)
+      }
+    }
+  }
+)
 </script>
+
+<style scoped>
+.card {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+}
+</style>

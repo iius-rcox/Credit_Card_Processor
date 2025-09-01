@@ -2,10 +2,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from .config import settings, init_directories
 
-# Create database engine
+# Create database engine with performance optimizations
 engine = create_engine(
     f"sqlite:///{settings.database_path}",
-    connect_args={"check_same_thread": False}
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 20,
+        "isolation_level": None  # Enable autocommit mode for better performance
+    },
+    pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections every hour
+    echo=False  # Disable SQL echo for production
 )
 
 # Create session factory

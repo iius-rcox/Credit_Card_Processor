@@ -1,74 +1,805 @@
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Custom base styles */
+/* Custom base styles following UI/UX Design Specification */
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-neutral-50 text-neutral-900 font-sans;
+    font-family: 'Inter', 'Roboto', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
   }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    @apply font-semibold text-gray-900;
-  }
-
+  /* Typography scale from UI/UX spec */
   h1 {
-    @apply text-3xl;
+    @apply text-page-title text-neutral-900; /* H1 - Page Title: 32px, Bold */
   }
 
   h2 {
-    @apply text-2xl;
+    @apply text-section-header text-neutral-900; /* H2 - Section Header: 24px, Medium */
   }
 
   h3 {
-    @apply text-xl;
+    @apply text-subsection text-neutral-900; /* H3 - Subsection: 20px, Medium */
+  }
+
+  h4 {
+    @apply text-card-title text-neutral-900; /* H4 - Card Title: 18px, Medium */
+  }
+
+  p, span {
+    @apply text-body-primary text-neutral-900; /* Body - Primary: 16px, Regular */
+  }
+
+  .text-secondary {
+    @apply text-body-secondary text-neutral-600; /* Body - Secondary: 14px, Medium Gray */
+  }
+
+  .text-small {
+    @apply text-small-text text-neutral-600; /* Small Text: 12px, Medium Gray */
+  }
+
+  /* Enhanced accessibility focus styles - WCAG 2.1 AA compliant */
+  *:focus {
+    @apply outline-none ring-2 ring-primary-600 ring-offset-2;
+  }
+
+  /* High contrast focus indicators for interactive elements */
+  button:focus,
+  input:focus,
+  select:focus,
+  textarea:focus,
+  a:focus,
+  [role="button"]:focus,
+  [role="tab"]:focus,
+  [role="menuitem"]:focus,
+  [tabindex]:focus {
+    @apply ring-2 ring-primary-600 ring-offset-2 ring-offset-white;
+  }
+
+  /* Focus-visible for keyboard users only */
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:focus-visible {
+    @apply ring-2 ring-primary-600 ring-offset-2 ring-offset-white;
+  }
+
+  /* Remove focus outline for mouse users */
+  button:focus:not(:focus-visible),
+  input:focus:not(:focus-visible),
+  select:focus:not(:focus-visible),
+  textarea:focus:not(:focus-visible),
+  a:focus:not(:focus-visible) {
+    @apply ring-0;
+  }
+
+  /* Screen reader only content */
+  .sr-only {
+    @apply absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .sr-only.focus\:not-sr-only:focus {
+    @apply relative w-auto h-auto p-1 m-0 overflow-visible whitespace-normal;
+    clip: auto;
   }
 }
 
-/* Custom component styles */
+/* Enhanced component styles following UI/UX spec */
 @layer components {
+  /* Card component with spec styling */
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+    @apply bg-white rounded-card shadow-card border border-neutral-300 p-lg;
+    /* Background: White, Border: 1px solid Light Gray, Border Radius: 8px, 
+       Shadow: 0 2px 4px rgba(0,0,0,0.1), Padding: 24px */
   }
 
+  .card:hover {
+    @apply shadow-card-hover;
+    /* Elevation increase on hover */
+  }
+
+  /* Button components with comprehensive styling */
   .btn {
-    @apply inline-flex items-center justify-center px-4 py-2 rounded-md font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-button 
+           text-button-text transition-all duration-200 disabled:opacity-50 
+           disabled:cursor-not-allowed border border-transparent focus:ring-2 
+           focus:ring-offset-2 font-medium;
+    /* Height: 40px minimum, 16px padding, 8px radius, transitions */
   }
 
+  /* Primary button - Blue background, white text */
   .btn-primary {
-    @apply btn bg-primary-600 hover:bg-primary-700 text-white;
+    @apply btn bg-primary-600 hover:bg-primary-700 active:bg-primary-800 
+           text-white border-primary-600 hover:border-primary-700 
+           focus:ring-primary-500;
   }
 
+  /* Secondary button - White background, blue border and text */
   .btn-secondary {
-    @apply btn bg-gray-100 hover:bg-gray-200 text-gray-900;
+    @apply btn bg-white hover:bg-neutral-50 active:bg-neutral-100 
+           text-primary-600 border-primary-600 hover:border-primary-700 
+           focus:ring-primary-500;
   }
 
+  /* Success button - Green background, white text */
   .btn-success {
-    @apply btn bg-success-600 hover:bg-success-700 text-white;
+    @apply btn bg-success-600 hover:bg-success-700 active:bg-success-800 
+           text-white border-success-600 hover:border-success-700 
+           focus:ring-success-500;
   }
 
+  /* Danger button - Red background, white text */
   .btn-danger {
-    @apply btn bg-error-600 hover:bg-error-700 text-white;
+    @apply btn bg-error-600 hover:bg-error-700 active:bg-error-800 
+           text-white border-error-600 hover:border-error-700 
+           focus:ring-error-500;
   }
 
+  /* Warning button */
+  .btn-warning {
+    @apply btn bg-warning-600 hover:bg-warning-700 active:bg-warning-800 
+           text-white border-warning-600 hover:border-warning-700 
+           focus:ring-warning-500;
+  }
+
+  /* Ghost button - Transparent background, colored text */
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-neutral-100 active:bg-neutral-200 
+           text-primary-600 border-transparent hover:border-neutral-300 
+           focus:ring-primary-500;
+  }
+
+  /* Large button variant */
+  .btn-large {
+    @apply px-6 py-3 text-base min-h-[48px];
+  }
+
+  /* Small button variant */
+  .btn-small {
+    @apply px-3 py-1 text-sm min-h-[32px];
+  }
+
+  /* Form elements with spec styling */
   .form-input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed;
+    @apply w-full min-h-[40px] px-3 py-2 border border-neutral-300 rounded-input 
+           bg-white text-body-primary placeholder-neutral-500 
+           focus:border-primary-500 focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50
+           disabled:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-500
+           transition-colors duration-200;
+    /* Height: 40px, 12px padding, White background, light gray border, 8px radius */
+  }
+
+  .form-input:focus {
+    @apply border-primary-600 ring-2 ring-primary-500 ring-opacity-50;
+    /* Focus State: Blue border, subtle shadow */
+  }
+
+  .form-input.error {
+    @apply border-error-600 ring-2 ring-error-500 ring-opacity-50;
+    /* Error State: Red border, red helper text */
+  }
+
+  .form-input.success {
+    @apply border-success-600 ring-2 ring-success-500 ring-opacity-50;
+    /* Success State: Green border, green helper text */
   }
 
   .form-label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
+    @apply block text-body-secondary font-medium text-neutral-700 mb-1;
   }
 
+  .form-error {
+    @apply text-small-text text-error-600 mt-1;
+  }
+
+  .form-success {
+    @apply text-small-text text-success-600 mt-1;
+  }
+
+  /* Progress bars with visual hierarchy */
   .progress-bar {
-    @apply w-full bg-gray-200 rounded-full h-2.5;
+    @apply w-full bg-neutral-200 rounded-full overflow-hidden;
+  }
+
+  .progress-bar.small {
+    @apply h-1;
+  }
+
+  .progress-bar.medium {
+    @apply h-2.5;
+  }
+
+  .progress-bar.large {
+    @apply h-4;
   }
 
   .progress-fill {
-    @apply h-2.5 bg-primary-600 rounded-full transition-all duration-300 ease-in-out;
+    @apply h-full bg-primary-600 rounded-full transition-all duration-300 ease-in-out;
+    background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.15) 75%, transparent 75%, transparent);
+    background-size: 1rem 1rem;
+  }
+
+  .progress-fill.processing {
+    @apply bg-warning-600;
+    animation: progress-stripe 1s linear infinite;
+  }
+
+  .progress-fill.completed {
+    @apply bg-success-600;
+  }
+
+  .progress-fill.error {
+    @apply bg-error-600;
+  }
+
+  /* Status badges and indicators */
+  .status-badge {
+    @apply inline-flex items-center px-2 py-1 rounded-full text-small-text font-medium;
+  }
+
+  .status-badge.idle {
+    @apply bg-neutral-100 text-neutral-800;
+  }
+
+  .status-badge.processing {
+    @apply bg-warning-100 text-warning-800;
+  }
+
+  .status-badge.completed {
+    @apply bg-success-100 text-success-800;
+  }
+
+  .status-badge.error {
+    @apply bg-error-100 text-error-800;
+  }
+
+  .status-badge.cancelled {
+    @apply bg-neutral-100 text-neutral-600;
+  }
+
+  /* File upload zones */
+  .file-drop-zone {
+    @apply border-2 border-dashed border-neutral-300 rounded-lg p-8 text-center 
+           transition-all duration-200 hover:border-primary-400 hover:bg-primary-50;
+  }
+
+  .file-drop-zone.drag-active {
+    @apply border-primary-500 bg-primary-100 text-primary-700;
+  }
+
+  .file-drop-zone.has-file {
+    @apply border-success-500 bg-success-50 border-solid;
+  }
+
+  .file-drop-zone.error {
+    @apply border-error-500 bg-error-50;
+  }
+
+  /* Activity feed items */
+  .activity-item {
+    @apply flex items-start space-x-3 py-2 px-3 rounded-lg hover:bg-neutral-50 
+           transition-colors duration-150;
+  }
+
+  .activity-item.success {
+    @apply bg-success-50 hover:bg-success-100;
+  }
+
+  .activity-item.warning {
+    @apply bg-warning-50 hover:bg-warning-100;
+  }
+
+  .activity-item.error {
+    @apply bg-error-50 hover:bg-error-100;
+  }
+
+  /* Session setup cards */
+  .quick-action-card {
+    @apply rounded-xl shadow-card hover:shadow-card-hover cursor-pointer 
+           transition-all duration-300 border-2 focus-within:ring-2 
+           focus-within:ring-primary-500 focus-within:ring-opacity-50;
+  }
+
+  .quick-action-card:hover {
+    @apply transform -translate-y-1;
+  }
+
+  /* Data tables */
+  .data-table {
+    @apply w-full border-collapse border border-neutral-200 rounded-lg overflow-hidden;
+  }
+
+  .data-table th {
+    @apply bg-neutral-100 px-4 py-3 text-left text-body-secondary font-medium 
+           text-neutral-700 border-b border-neutral-200;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 border-b border-neutral-200 text-body-primary;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-neutral-50;
+  }
+
+  /* Loading states */
+  .loading-spinner {
+    @apply animate-spin rounded-full border-2 border-neutral-200 border-t-primary-600;
+  }
+
+  .loading-skeleton {
+    @apply animate-pulse bg-neutral-200 rounded;
+  }
+
+  .loading-shimmer {
+    @apply relative overflow-hidden;
+  }
+
+  .loading-shimmer::after {
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent;
+    content: '';
+    animation: shimmer 2s infinite;
+  }
+
+  /* Notification components */
+  .notification {
+    @apply flex items-center p-4 rounded-lg shadow-lg border-l-4 max-w-md;
+  }
+
+  .notification.info {
+    @apply bg-info-50 border-info-600 text-info-800;
+  }
+
+  .notification.success {
+    @apply bg-success-50 border-success-600 text-success-800;
+  }
+
+  .notification.warning {
+    @apply bg-warning-50 border-warning-600 text-warning-800;
+  }
+
+  .notification.error {
+    @apply bg-error-50 border-error-600 text-error-800;
+  }
+
+  /* Enhanced accessibility features - WCAG 2.1 AA compliant */
+  .sr-only {
+    @apply absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .sr-only:focus {
+    @apply relative w-auto h-auto p-1 m-0 overflow-visible whitespace-normal;
+    clip: auto;
+  }
+
+  /* ARIA live regions */
+  .aria-live-polite {
+    @apply sr-only;
+  }
+
+  .aria-live-assertive {
+    @apply sr-only;
+  }
+
+  /* Color contrast compliant error states */
+  .error-text {
+    @apply text-error-700; /* Ensures 4.5:1 contrast ratio */
+  }
+
+  .error-border {
+    @apply border-error-600 ring-2 ring-error-500 ring-opacity-25;
+  }
+
+  /* Success states with proper contrast */
+  .success-text {
+    @apply text-success-700;
+  }
+
+  .success-border {
+    @apply border-success-600 ring-2 ring-success-500 ring-opacity-25;
+  }
+
+  /* Warning states */
+  .warning-text {
+    @apply text-warning-700;
+  }
+
+  .warning-border {
+    @apply border-warning-600 ring-2 ring-warning-500 ring-opacity-25;
+  }
+
+  /* Keyboard navigation indicators */
+  .keyboard-focus-indicator {
+    @apply ring-2 ring-primary-600 ring-offset-2 ring-offset-white;
+  }
+
+  /* Skip links styling */
+  .skip-link {
+    @apply absolute -top-10 left-4 bg-primary-600 text-white px-4 py-2 rounded z-50;
+    @apply focus:top-4 transition-all duration-200;
+  }
+
+  /* Enhanced high contrast mode support */
+  @media (prefers-contrast: high) {
+    /* Global high contrast adjustments */
+    :root {
+      --high-contrast-bg: #000000;
+      --high-contrast-text: #ffffff;
+      --high-contrast-border: #ffffff;
+      --high-contrast-focus: #ffff00;
+      --high-contrast-link: #00ffff;
+      --high-contrast-error: #ff0000;
+      --high-contrast-success: #00ff00;
+      --high-contrast-warning: #ffff00;
+    }
+
+    /* Base elements */
+    body {
+      @apply bg-black text-white;
+      background-color: var(--high-contrast-bg) !important;
+      color: var(--high-contrast-text) !important;
+    }
+
+    /* All buttons with enhanced borders and contrast */
+    .btn {
+      @apply border-2 border-white;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    .btn-primary {
+      @apply bg-black text-white border-white;
+      background-color: var(--high-contrast-bg) !important;
+      color: var(--high-contrast-text) !important;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    .btn-primary:hover,
+    .btn-primary:focus {
+      @apply bg-white text-black;
+      background-color: var(--high-contrast-text) !important;
+      color: var(--high-contrast-bg) !important;
+    }
+
+    .btn-secondary {
+      @apply bg-white text-black border-white;
+      background-color: var(--high-contrast-text) !important;
+      color: var(--high-contrast-bg) !important;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    .btn-secondary:hover,
+    .btn-secondary:focus {
+      @apply bg-black text-white;
+      background-color: var(--high-contrast-bg) !important;
+      color: var(--high-contrast-text) !important;
+    }
+
+    /* Cards with strong borders */
+    .card {
+      @apply border-2 border-white bg-black;
+      background-color: var(--high-contrast-bg) !important;
+      border-color: var(--high-contrast-border) !important;
+      box-shadow: 0 0 0 2px var(--high-contrast-border) !important;
+    }
+
+    /* Form elements with enhanced visibility */
+    .form-input {
+      @apply border-2 border-white bg-black text-white;
+      background-color: var(--high-contrast-bg) !important;
+      color: var(--high-contrast-text) !important;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    .form-input:focus {
+      @apply border-yellow-400 ring-yellow-400;
+      border-color: var(--high-contrast-focus) !important;
+      box-shadow: 0 0 0 2px var(--high-contrast-focus) !important;
+    }
+
+    /* Enhanced focus indicators */
+    *:focus {
+      @apply ring-2 ring-yellow-400 ring-offset-2 ring-offset-black;
+      outline: 2px solid var(--high-contrast-focus) !important;
+      outline-offset: 2px;
+    }
+
+    /* Links with high contrast */
+    a {
+      color: var(--high-contrast-link) !important;
+      text-decoration: underline !important;
+    }
+
+    a:hover,
+    a:focus {
+      @apply bg-cyan-400 text-black;
+      background-color: var(--high-contrast-link) !important;
+      color: var(--high-contrast-bg) !important;
+    }
+
+    /* Status colors with maximum contrast */
+    .text-error-600,
+    .text-error-700,
+    .text-error-800,
+    .error-text {
+      color: var(--high-contrast-error) !important;
+    }
+
+    .bg-error-50,
+    .bg-error-100 {
+      background-color: var(--high-contrast-bg) !important;
+      border: 2px solid var(--high-contrast-error) !important;
+    }
+
+    .text-success-600,
+    .text-success-700,
+    .text-success-800,
+    .success-text {
+      color: var(--high-contrast-success) !important;
+    }
+
+    .bg-success-50,
+    .bg-success-100 {
+      background-color: var(--high-contrast-bg) !important;
+      border: 2px solid var(--high-contrast-success) !important;
+    }
+
+    .text-warning-600,
+    .text-warning-700,
+    .text-warning-800,
+    .warning-text {
+      color: var(--high-contrast-warning) !important;
+    }
+
+    .bg-warning-50,
+    .bg-warning-100 {
+      background-color: var(--high-contrast-bg) !important;
+      border: 2px solid var(--high-contrast-warning) !important;
+    }
+
+    /* Notification container enhancements */
+    .notification-item {
+      @apply border-2 bg-black;
+      background-color: var(--high-contrast-bg) !important;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    /* Icons and decorative elements */
+    svg {
+      fill: currentColor !important;
+      stroke: currentColor !important;
+    }
+
+    /* Loading spinner with high contrast */
+    .animate-spin {
+      border-color: var(--high-contrast-border) !important;
+      border-top-color: var(--high-contrast-focus) !important;
+    }
+
+    /* File upload zones */
+    .border-dashed {
+      @apply border-2 border-solid border-white;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    /* Progress elements */
+    .progress-bar {
+      background-color: var(--high-contrast-bg) !important;
+      border: 2px solid var(--high-contrast-border) !important;
+    }
+
+    .progress-fill {
+      background-color: var(--high-contrast-focus) !important;
+    }
+
+    /* Header and navigation */
+    header,
+    .app-header {
+      @apply bg-black border-white;
+      background-color: var(--high-contrast-bg) !important;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    /* Footer */
+    footer {
+      @apply bg-black border-white;
+      background-color: var(--high-contrast-bg) !important;
+      border-color: var(--high-contrast-border) !important;
+    }
+
+    /* Remove subtle colors and shadows */
+    .shadow-sm,
+    .shadow,
+    .shadow-lg,
+    .shadow-card,
+    .shadow-card-hover {
+      box-shadow: 0 0 0 2px var(--high-contrast-border) !important;
+    }
+
+    /* Text colors - ensure maximum contrast */
+    .text-gray-600,
+    .text-gray-700,
+    .text-gray-800,
+    .text-gray-900,
+    .text-neutral-600,
+    .text-neutral-700,
+    .text-neutral-800,
+    .text-neutral-900 {
+      color: var(--high-contrast-text) !important;
+    }
+
+    .text-gray-400,
+    .text-gray-500,
+    .text-neutral-400,
+    .text-neutral-500 {
+      color: var(--high-contrast-text) !important;
+    }
+
+    /* Background colors */
+    .bg-gray-50,
+    .bg-gray-100,
+    .bg-neutral-50,
+    .bg-neutral-100,
+    .bg-white {
+      background-color: var(--high-contrast-bg) !important;
+    }
+  }
+
+  /* Reduced motion support */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      @apply transition-none animate-none;
+    }
+  }
+
+  /* Dark mode support (future enhancement) */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+    }
+    
+    /* Dark mode styles would go here in future implementation */
+  }
+}
+
+/* Custom animations */
+@keyframes progress-stripe {
+  from {
+    background-position: 1rem 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Utility classes for specific UI patterns */
+@layer utilities {
+  /* Container with consistent max width */
+  .container-app {
+    @apply max-w-container mx-auto px-4 tablet:px-6 desktop:px-8;
+  }
+
+  /* Section spacing utilities */
+  .section-spacing {
+    @apply py-xl;
+  }
+
+  .section-spacing-large {
+    @apply py-xxl;
+  }
+
+  /* Visual hierarchy utilities */
+  .text-hierarchy-1 {
+    @apply text-page-title text-neutral-900;
+  }
+
+  .text-hierarchy-2 {
+    @apply text-section-header text-neutral-900;
+  }
+
+  .text-hierarchy-3 {
+    @apply text-subsection text-neutral-900;
+  }
+
+  .text-hierarchy-4 {
+    @apply text-card-title text-neutral-900;
+  }
+
+  /* Interactive element sizing */
+  .touch-target {
+    @apply min-w-[44px] min-h-[44px];
+  }
+
+  /* Layout grid utilities */
+  .grid-app {
+    @apply grid gap-lg tablet:gap-xl desktop:gap-xxl;
+  }
+
+  /* Responsive design utilities */
+  /* Layout containers with responsive behavior */
+  .container-responsive {
+    @apply w-full mx-auto px-4 tablet:px-6 desktop:px-8 max-w-4xl tablet:max-w-6xl desktop:max-w-container;
+  }
+  
+  /* Grid system responsive utilities */
+  .grid-responsive {
+    @apply grid gap-4;
+  }
+
+  .grid-responsive.cols-1 {
+    @apply grid-cols-1;
+  }
+
+  .grid-responsive.cols-2 {
+    @apply grid-cols-1 tablet:grid-cols-2;
+  }
+
+  .grid-responsive.cols-3 {
+    @apply grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3;
+  }
+
+  .grid-responsive.cols-4 {
+    @apply grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4;
+  }
+
+  /* Responsive spacing */
+  .spacing-responsive {
+    @apply space-y-4 tablet:space-y-6 desktop:space-y-8;
+  }
+
+  .padding-responsive {
+    @apply p-4 tablet:p-6 desktop:p-8;
+  }
+
+  .margin-responsive {
+    @apply m-4 tablet:m-6 desktop:m-8;
+  }
+
+  /* Typography responsive scaling */
+  .text-responsive-xl {
+    @apply text-xl tablet:text-2xl desktop:text-page-title;
+  }
+
+  .text-responsive-lg {
+    @apply text-lg tablet:text-xl desktop:text-section-header;
+  }
+
+  .text-responsive-md {
+    @apply text-base tablet:text-lg desktop:text-subsection;
+  }
+
+  /* Touch-friendly sizing */
+  .touch-friendly {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* Responsive visibility utilities */
+  .mobile-only {
+    @apply block tablet:hidden;
+  }
+
+  .tablet-up {
+    @apply hidden tablet:block;
+  }
+
+  .desktop-only {
+    @apply hidden desktop:block;
+  }
+
+  .tablet-only {
+    @apply hidden tablet:block desktop:hidden;
   }
 }

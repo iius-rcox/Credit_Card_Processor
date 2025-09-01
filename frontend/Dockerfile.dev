@@ -27,7 +27,8 @@ COPY index.html ./
 
 # Copy source code (will be overridden by volume mount in development)
 COPY src/ ./src/
-COPY public/ ./public/
+# Create public directory if it doesn't exist
+RUN mkdir -p public
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \

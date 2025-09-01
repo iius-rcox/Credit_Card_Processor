@@ -1,0 +1,424 @@
+/* Component-specific styles following UI/UX Design Specification */
+
+/* File Upload Component Enhancements */
+.file-upload-container {
+  @apply grid grid-cols-1 tablet:grid-cols-2 gap-lg;
+}
+
+.file-upload-prompt {
+  @apply space-y-4;
+}
+
+.file-upload-prompt h3 {
+  @apply text-card-title font-medium text-neutral-900;
+}
+
+.file-upload-prompt p {
+  @apply text-body-secondary text-neutral-600;
+}
+
+.file-status {
+  @apply flex items-center space-x-3 p-4 bg-success-50 border border-success-200 rounded-lg;
+}
+
+.file-info {
+  @apply flex-1 space-y-1;
+}
+
+.file-name {
+  @apply text-body-primary font-medium text-neutral-900;
+}
+
+.file-size {
+  @apply text-body-secondary text-neutral-600;
+}
+
+.upload-status {
+  @apply text-small-text font-medium;
+}
+
+.upload-status.success {
+  @apply text-success-700;
+}
+
+.upload-status.error {
+  @apply text-error-700;
+}
+
+.upload-status.uploading {
+  @apply text-warning-700;
+}
+
+/* Progress Component Enhancements */
+.progress-container {
+  @apply space-y-2 mt-4;
+}
+
+.progress-text {
+  @apply text-body-secondary text-center text-neutral-700;
+}
+
+.progress-header {
+  @apply flex justify-between items-start mb-lg;
+}
+
+.progress-stats {
+  @apply flex items-center space-x-lg text-body-secondary;
+}
+
+.stat-item {
+  @apply flex items-center space-x-2;
+}
+
+.progress-percentage {
+  @apply text-body-secondary font-medium text-center mt-2;
+}
+
+.current-employee {
+  @apply flex items-center justify-between p-lg bg-primary-50 rounded-lg border border-primary-200 my-lg;
+}
+
+.employee-info h4 {
+  @apply text-body-secondary font-medium text-neutral-700 mb-1;
+}
+
+.employee-name {
+  @apply text-card-title font-semibold text-neutral-900;
+}
+
+.employee-id {
+  @apply text-body-secondary text-neutral-600 font-mono;
+}
+
+.processing-animation {
+  @apply flex-shrink-0;
+}
+
+.spinner {
+  @apply w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin;
+}
+
+/* Status Breakdown Grid */
+.status-breakdown {
+  @apply grid grid-cols-2 tablet:grid-cols-4 gap-md my-lg;
+}
+
+.status-item {
+  @apply flex flex-col items-center p-md bg-white rounded-lg border border-neutral-200 text-center;
+}
+
+.status-item.complete {
+  @apply bg-success-50 border-success-200;
+}
+
+.status-item.processing {
+  @apply bg-primary-50 border-primary-200;
+}
+
+.status-item.issues {
+  @apply bg-warning-50 border-warning-200;
+}
+
+.status-item.pending {
+  @apply bg-neutral-100 border-neutral-300;
+}
+
+.status-count {
+  @apply text-section-header font-bold mt-2;
+}
+
+.status-label {
+  @apply text-body-secondary font-medium mt-1;
+}
+
+/* Results Display Enhancements */
+.results-header {
+  @apply mb-xl;
+}
+
+.results-summary {
+  @apply grid grid-cols-2 tablet:grid-cols-4 gap-lg p-lg bg-white rounded-lg border border-neutral-200 shadow-card mb-lg;
+}
+
+.summary-stat {
+  @apply text-center;
+}
+
+.summary-stat-value {
+  @apply text-section-header font-bold text-neutral-900;
+}
+
+.summary-stat-label {
+  @apply text-body-secondary text-neutral-600 mt-1;
+}
+
+.delta-info {
+  @apply flex items-center space-x-3 p-md bg-info-50 border border-info-200 rounded-lg mb-lg;
+}
+
+.results-grouping {
+  @apply grid grid-cols-1 desktop:grid-cols-2 gap-lg;
+}
+
+.results-group {
+  @apply bg-white rounded-lg border border-neutral-200 shadow-card overflow-hidden;
+}
+
+.results-group-header {
+  @apply p-lg border-b border-neutral-200 bg-neutral-50;
+}
+
+.results-group-title {
+  @apply flex items-center space-x-2 text-card-title font-semibold;
+}
+
+.results-group-count {
+  @apply ml-2 px-2 py-1 bg-neutral-200 text-neutral-700 rounded-full text-small-text font-medium;
+}
+
+.results-group-content {
+  @apply p-lg space-y-md;
+}
+
+.employee-list {
+  @apply space-y-3;
+}
+
+.employee-item {
+  @apply flex items-center justify-between p-3 bg-neutral-50 rounded-lg hover:bg-neutral-100 transition-colors;
+}
+
+.employee-info-compact {
+  @apply flex-1;
+}
+
+.employee-name-compact {
+  @apply text-body-primary font-medium text-neutral-900;
+}
+
+.employee-details {
+  @apply text-body-secondary text-neutral-600 mt-1;
+}
+
+.employee-actions {
+  @apply flex items-center space-x-2;
+}
+
+/* Export Actions Component */
+.export-actions-container {
+  @apply space-y-lg;
+}
+
+.export-buttons {
+  @apply grid grid-cols-1 tablet:grid-cols-3 gap-md;
+}
+
+.export-button {
+  @apply flex flex-col items-center p-lg bg-white border-2 border-neutral-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 transition-all cursor-pointer;
+}
+
+.export-button:hover {
+  @apply transform -translate-y-1 shadow-card-hover;
+}
+
+.export-button.primary {
+  @apply border-primary-500 bg-primary-50;
+}
+
+.export-button.secondary {
+  @apply border-success-300 bg-success-50;
+}
+
+.export-button.tertiary {
+  @apply border-warning-300 bg-warning-50;
+}
+
+.export-icon {
+  @apply w-8 h-8 mb-3;
+}
+
+.export-title {
+  @apply text-card-title font-semibold text-neutral-900 mb-2;
+}
+
+.export-description {
+  @apply text-body-secondary text-center text-neutral-600;
+}
+
+/* Session Setup Component Enhancements */
+.session-setup {
+  @apply max-w-6xl mx-auto;
+}
+
+.setup-header {
+  @apply text-center mb-xl;
+}
+
+.setup-title {
+  @apply text-page-title font-bold text-neutral-900 mb-4;
+}
+
+.setup-subtitle {
+  @apply text-body-primary text-neutral-600 max-w-3xl mx-auto leading-relaxed;
+}
+
+.quick-actions-grid {
+  @apply grid grid-cols-1 tablet:grid-cols-3 gap-lg mb-xl;
+}
+
+.quick-action-icon {
+  @apply w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4;
+}
+
+.quick-action-title {
+  @apply text-card-title font-semibold text-neutral-900 mb-2;
+}
+
+.quick-action-description {
+  @apply text-body-secondary text-neutral-600;
+}
+
+.quick-action-loading {
+  @apply flex items-center space-x-2 mt-4;
+}
+
+.quick-action-spinner {
+  @apply w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin;
+}
+
+/* Recent Sessions Panel */
+.recent-sessions-panel {
+  @apply bg-white rounded-lg border border-neutral-200 shadow-card overflow-hidden;
+}
+
+.recent-sessions-header {
+  @apply flex justify-between items-center p-lg border-b border-neutral-200 bg-neutral-50;
+}
+
+.recent-sessions-content {
+  @apply p-lg;
+}
+
+.sessions-grid {
+  @apply grid grid-cols-1 tablet:grid-cols-2 gap-md;
+}
+
+.session-card {
+  @apply border border-neutral-200 rounded-lg p-md hover:shadow-card-hover transition-all cursor-pointer;
+}
+
+.session-card:hover {
+  @apply border-primary-300 bg-primary-50;
+}
+
+.session-card-header {
+  @apply flex justify-between items-start mb-3;
+}
+
+.session-name {
+  @apply text-body-primary font-medium text-neutral-900;
+}
+
+.session-info {
+  @apply space-y-2 text-body-secondary text-neutral-600;
+}
+
+.session-info-item {
+  @apply flex items-center space-x-2;
+}
+
+.session-info-icon {
+  @apply w-4 h-4 text-neutral-400;
+}
+
+/* Custom Form Components */
+.custom-form-container {
+  @apply bg-white rounded-lg border border-neutral-200 shadow-card overflow-hidden;
+}
+
+.custom-form-header {
+  @apply flex justify-between items-center p-lg border-b border-neutral-200 bg-neutral-50;
+}
+
+.custom-form-content {
+  @apply p-lg space-y-lg;
+}
+
+.form-group {
+  @apply space-y-2;
+}
+
+.checkbox-group {
+  @apply space-y-3;
+}
+
+.checkbox-item {
+  @apply flex items-center space-x-3;
+}
+
+.checkbox-input {
+  @apply h-4 w-4 text-primary-600 focus:ring-primary-500 border-neutral-300 rounded;
+}
+
+.checkbox-label {
+  @apply text-body-primary text-neutral-900;
+}
+
+.checkbox-hint {
+  @apply text-body-secondary text-neutral-500 ml-1;
+}
+
+.delta-sessions-list {
+  @apply space-y-2 max-h-48 overflow-y-auto border border-neutral-200 rounded-lg p-3;
+}
+
+.delta-session-item {
+  @apply flex items-center p-2 hover:bg-neutral-50 rounded cursor-pointer;
+}
+
+.delta-session-info {
+  @apply ml-3 flex-1;
+}
+
+.delta-session-name {
+  @apply text-body-secondary font-medium text-neutral-900;
+}
+
+.delta-session-meta {
+  @apply text-small-text text-neutral-500;
+}
+
+.delta-mode-notice {
+  @apply text-small-text text-primary-600 bg-primary-50 p-2 rounded mt-2;
+}
+
+.form-actions {
+  @apply flex justify-end space-x-3 pt-4 border-t border-neutral-200;
+}
+
+/* Responsive overrides for mobile */
+@media (max-width: 767px) {
+  .file-upload-container {
+    @apply grid-cols-1;
+  }
+  
+  .status-breakdown {
+    @apply grid-cols-2;
+  }
+  
+  .results-grouping {
+    @apply grid-cols-1;
+  }
+  
+  .export-buttons {
+    @apply grid-cols-1;
+  }
+  
+  .quick-actions-grid {
+    @apply grid-cols-1;
+  }
+  
+  .sessions-grid {
+    @apply grid-cols-1;
+  }
+}

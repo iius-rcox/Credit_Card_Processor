@@ -27,6 +27,10 @@ from ..schemas import (
     ProcessingStartRequest, ProcessingResponse, ProcessingControlResponse,
     ProcessingConfig, ErrorResponse
 )
+from ..services.mock_processor import simulate_document_processing, log_processing_activity, update_session_status
+from ..services.delta_aware_processor import (
+    DeltaAwareProcessor, create_delta_processing_config, should_use_delta_processing
+)
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -90,86 +94,17 @@ def check_session_access(db_session: ProcessingSession, current_user: UserInfo) 
     return session_creator == current_user.username.lower()
 
 
-async def log_processing_activity(
-    db: Session,
-    session_id: str,
-    activity_type: ActivityType,
-    message: str,
-    employee_id: Optional[str] = None,
-    created_by: str = "SYSTEM"
-):
-    """
-    Log processing activity to database
-    
-    Args:
-        db: Database session
-        session_id: UUID of the processing session
-        activity_type: Type of activity being logged
-        message: Activity message
-        employee_id: Optional employee ID if activity is employee-specific
-        created_by: User who created the activity (default: SYSTEM)
-    """
-    try:
-        activity = ProcessingActivity(
-            session_id=uuid.UUID(session_id),
-            activity_type=activity_type,
-            activity_message=message,
-            employee_id=employee_id,
-            created_by=created_by
-        )
-        
-        db.add(activity)
-        db.commit()
-        
-        logger.info(f"Activity logged - Session: {session_id}, Type: {activity_type.value}, Message: {message}")
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to log activity for session {session_id}: {str(e)}")
-
-
-async def update_session_status(
-    db: Session,
-    session_id: str,
-    new_status: SessionStatus,
-    processed_employees: Optional[int] = None
-):
-    """
-    Update session status and processing statistics
-    
-    Args:
-        db: Database session
-        session_id: UUID of the processing session
-        new_status: New status to set
-        processed_employees: Optional count of processed employees
-    """
-    try:
-        session_uuid = uuid.UUID(session_id)
-        db_session = db.query(ProcessingSession).filter(
-            ProcessingSession.session_id == session_uuid
-        ).first()
-        
-        if db_session:
-            db_session.status = new_status
-            
-            if processed_employees is not None:
-                db_session.processed_employees = processed_employees
-            
-            db.commit()
-            
-            logger.info(f"Session status updated - ID: {session_id}, Status: {new_status.value}")
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to update session status for {session_id}: {str(e)}")
-
 
 async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
     """
-    Main background processing function
+    Enhanced main background processing function with mock document processing
     
-    This function performs the actual document processing in the background.
-    It includes progress tracking, error handling, and state management.
+    This function performs comprehensive document processing simulation including:
+    - Realistic employee data generation (45 employees by default)
+    - Sequential processing with proper timing (1 employee per second)
+    - Validation issues for every 7th employee
+    - Complete processing control support (pause/resume/cancel)
+    - Progress tracking and activity logging
     
     Args:
         session_id: UUID of the session to process
@@ -200,120 +135,53 @@ async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
         processing_state["start_time"] = time.time()
         processing_state["config"] = config
         
-        # Log processing start
-        await log_processing_activity(
-            db, session_id, ActivityType.PROCESSING_STARTED,
-            f"Background processing started with config: {config}"
-        )
+        logger.info(f"Starting processing for session {session_id}")
         
-        # Update session status
-        await update_session_status(db, session_id, SessionStatus.PROCESSING)
-        
-        # Simulate document processing with mock data
-        # In a real implementation, this would:
-        # 1. Load and parse uploaded PDF files
-        # 2. Extract employee data from documents
-        # 3. Validate data consistency
-        # 4. Create EmployeeRevision records
-        
-        # Mock processing: Create sample employees
-        mock_employees = [
-            {"id": f"EMP{i:03d}", "name": f"Employee {i:03d}", "car_amount": 100.00 + i, "receipt_amount": 95.00 + i}
-            for i in range(1, config.get("batch_size", 10) + 1)
-        ]
-        
-        processing_state["total_employees"] = len(mock_employees)
-        
-        # Update session with total count
-        db_session.total_employees = len(mock_employees)
-        db.commit()
-        
-        logger.info(f"Processing {len(mock_employees)} employees for session {session_id}")
-        
-        # Process each employee
-        for index, employee_data in enumerate(mock_employees):
-            # Check for cancellation
-            if processing_state.get("should_cancel", False):
-                logger.info(f"Processing cancelled for session {session_id}")
-                await log_processing_activity(
-                    db, session_id, ActivityType.PROCESSING_CANCELLED,
-                    f"Processing cancelled by user at employee {index + 1}"
-                )
-                await update_session_status(db, session_id, SessionStatus.CANCELLED, index)
-                processing_state["status"] = "cancelled"
-                return
+        # Check if delta processing should be used
+        if should_use_delta_processing(db_session):
+            logger.info(f"Using delta processing for session {session_id} with base session {db_session.delta_session_id}")
             
-            # Check for pause
-            while processing_state.get("should_pause", False) and not processing_state.get("should_cancel", False):
-                if processing_state["status"] != "paused":
-                    processing_state["status"] = "paused"
-                    await log_processing_activity(
-                        db, session_id, ActivityType.PROCESSING_PAUSED,
-                        f"Processing paused at employee {index + 1}"
-                    )
-                    await update_session_status(db, session_id, SessionStatus.PAUSED, index)
-                
-                # Wait for resume or cancel
-                await asyncio.sleep(1)
+            # Create delta processing configuration
+            delta_config = create_delta_processing_config(db_session.processing_options)
             
-            # Resume processing
-            if processing_state["status"] == "paused":
-                processing_state["status"] = "processing"
-                await log_processing_activity(
-                    db, session_id, ActivityType.PROCESSING_RESUMED,
-                    f"Processing resumed at employee {index + 1}"
-                )
-                await update_session_status(db, session_id, SessionStatus.PROCESSING, index)
+            # Initialize delta processor
+            delta_processor = DeltaAwareProcessor(db)
             
-            processing_state["current_employee_index"] = index
+            # Get current user from processing context (we'll need to pass this through)
+            # For now, extract from session created_by field
+            user = db_session.created_by
+            if '\\' in user:
+                user = user.split('\\')[1]  # Extract username from domain format
             
-            # Log processing progress
-            await log_processing_activity(
-                db, session_id, ActivityType.PROCESSING_PROGRESS,
-                f"Processing employee {employee_data['name']} (ID: {employee_data['id']})",
-                employee_id=employee_data['id']
+            # Execute delta-aware processing
+            result = await delta_processor.process_delta_session(
+                session_id=session_id,
+                config=delta_config,
+                processing_state=processing_state,
+                user=user
             )
             
-            # Create employee revision record
-            employee_revision = EmployeeRevision(
-                session_id=session_uuid,
-                employee_id=employee_data['id'],
-                employee_name=employee_data['name'],
-                car_amount=employee_data['car_amount'],
-                receipt_amount=employee_data['receipt_amount'],
-                validation_status=ValidationStatus.VALID if abs(employee_data['car_amount'] - employee_data['receipt_amount']) <= config.get("validation_threshold", 0.05) * 100 else ValidationStatus.NEEDS_ATTENTION,
-                validation_flags={}
+            success = result.get('success', False)
+            
+            if success:
+                logger.info(f"Delta processing completed - Processed: {result.get('processed_count', 0)}, "
+                           f"Skipped: {result.get('skipped_count', 0)}, "
+                           f"Total: {result.get('total_employees', 0)}")
+        else:
+            logger.info(f"Using regular processing for session {session_id}")
+            
+            # Execute regular mock document processing
+            success = await simulate_document_processing(
+                session_id=session_id,
+                db=db,
+                processing_state=processing_state,
+                processing_config=config
             )
-            
-            db.add(employee_revision)
-            
-            # Simulate processing time (0.5-2 seconds per employee)
-            processing_delay = 0.5 + (index % 3) * 0.5
-            await asyncio.sleep(processing_delay)
-            
-            # Update progress
-            completed = index + 1
-            await update_session_status(db, session_id, SessionStatus.PROCESSING, completed)
-            
-            # Log progress periodically
-            if completed % max(1, len(mock_employees) // 10) == 0:
-                progress_percent = int((completed / len(mock_employees)) * 100)
-                await log_processing_activity(
-                    db, session_id, ActivityType.PROCESSING_PROGRESS,
-                    f"Processing progress: {completed}/{len(mock_employees)} employees ({progress_percent}%)"
-                )
         
-        # Processing completed successfully
-        processing_state["status"] = "completed"
-        
-        await log_processing_activity(
-            db, session_id, ActivityType.PROCESSING_COMPLETED,
-            f"Processing completed successfully - {len(mock_employees)} employees processed"
-        )
-        
-        await update_session_status(db, session_id, SessionStatus.COMPLETED, len(mock_employees))
-        
-        logger.info(f"Processing completed successfully for session {session_id}")
+        if success:
+            logger.info(f"Document processing completed successfully for session {session_id}")
+        else:
+            logger.info(f"Document processing was cancelled or failed for session {session_id}")
         
     except asyncio.CancelledError:
         logger.info(f"Processing task cancelled for session {session_id}")
@@ -327,13 +195,13 @@ async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
             await update_session_status(db, session_id, SessionStatus.CANCELLED)
         
     except Exception as e:
-        logger.error(f"Processing failed for session {session_id}: {str(e)}")
+        logger.error(f"Enhanced processing failed for session {session_id}: {str(e)}")
         processing_state["status"] = "failed"
         
         if db:
             await log_processing_activity(
                 db, session_id, ActivityType.PROCESSING_FAILED,
-                f"Processing failed with error: {str(e)}"
+                f"Enhanced processing failed with error: {str(e)}"
             )
             await update_session_status(db, session_id, SessionStatus.FAILED)
         
@@ -410,69 +278,94 @@ async def start_processing(
                 detail="Access denied to this session"
             )
         
-        # Check session status
-        if db_session.status in [SessionStatus.PROCESSING, SessionStatus.COMPLETED]:
-            logger.warning(f"Session {session_id} is already processing or completed")
+        # CONCURRENT ACCESS PROTECTION: Acquire session lock
+        processing_state = get_processing_state(session_id)
+        session_lock = _processing_locks.get(session_id)
+        
+        if not session_lock:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to acquire session lock"
+            )
+        
+        # Try to acquire lock without blocking
+        if session_lock.locked():
+            logger.warning(f"Session {session_id} is already being processed by another request")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Session is already {db_session.status.value}"
+                detail="Session is currently being processed by another request"
             )
         
-        # Check if files are uploaded
-        uploaded_files = db.query(FileUpload).filter(
-            FileUpload.session_id == session_uuid
-        ).all()
-        
-        if not uploaded_files:
-            logger.warning(f"No files uploaded for session {session_id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session must have files uploaded before processing"
+        async with session_lock:
+            # Re-check session status after acquiring lock
+            if db_session.status in [SessionStatus.PROCESSING, SessionStatus.COMPLETED]:
+                logger.warning(f"Session {session_id} is already processing or completed")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Session is already {db_session.status.value}"
+                )
+            
+            # Check if files are uploaded
+            uploaded_files = db.query(FileUpload).filter(
+                FileUpload.session_id == session_uuid
+            ).all()
+            
+            if not uploaded_files:
+                logger.warning(f"No files uploaded for session {session_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Session must have files uploaded before processing"
+                )
+            
+            # Validate we have both required file types
+            file_types = {file.file_type for file in uploaded_files}
+            if FileType.CAR not in file_types or FileType.RECEIPT not in file_types:
+                logger.warning(f"Missing required file types for session {session_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Session must have both CAR and RECEIPT files uploaded"
+                )
+            
+            # Get processing configuration with mock processing defaults
+            processing_config = request.processing_config if request else ProcessingConfig()
+            config_dict = processing_config.model_dump()
+            
+            # Set default employee count for mock processing if not specified
+            if "employee_count" not in config_dict:
+                config_dict["employee_count"] = 45
+            if "processing_delay" not in config_dict:
+                config_dict["processing_delay"] = 1.0  # 1 second per employee
+            
+            # Update session with processing options
+            db_session.processing_options.update(config_dict)
+            db.commit()
+            
+            # Clear any existing processing state
+            clear_processing_state(session_id)
+            
+            # Get database URL for background task
+            db_url = str(db.get_bind().url)
+            
+            # Start background processing
+            background_tasks.add_task(
+                process_session,
+                session_id,
+                config_dict,
+                db_url
             )
-        
-        # Validate we have both required file types
-        file_types = {file.file_type for file in uploaded_files}
-        if FileType.CAR not in file_types or FileType.RECEIPT not in file_types:
-            logger.warning(f"Missing required file types for session {session_id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session must have both CAR and RECEIPT files uploaded"
+            
+            logger.info(
+                f"Background processing started - Session: {session_id}, "
+                f"User: {current_user.username}, Config: {config_dict}"
             )
-        
-        # Get processing configuration
-        processing_config = request.processing_config if request else ProcessingConfig()
-        config_dict = processing_config.model_dump()
-        
-        # Update session with processing options
-        db_session.processing_options.update(config_dict)
-        db.commit()
-        
-        # Clear any existing processing state
-        clear_processing_state(session_id)
-        
-        # Get database URL for background task
-        db_url = str(db.get_bind().url)
-        
-        # Start background processing
-        background_tasks.add_task(
-            process_session,
-            session_id,
-            config_dict,
-            db_url
-        )
-        
-        logger.info(
-            f"Background processing started - Session: {session_id}, "
-            f"User: {current_user.username}, Config: {config_dict}"
-        )
-        
-        return ProcessingResponse(
-            session_id=session_id,
-            status=SessionStatus.PROCESSING,
-            message="Background processing started successfully",
-            processing_config=config_dict,
-            timestamp=datetime.now(timezone.utc)
-        )
+            
+            return ProcessingResponse(
+                session_id=session_id,
+                status=SessionStatus.PROCESSING,
+                message="Background processing started successfully",
+                processing_config=config_dict,
+                timestamp=datetime.now(timezone.utc)
+            )
         
     except HTTPException:
         raise

@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+venv_perf/
+env/
+ENV/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing and coverage
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+.nyc_output
+coverage/
+
+# Logs and data (exclude from build context, mount as volumes)
+logs/
+*.log
+data/uploads/*
+data/exports/*
+# Keep database structure but not test data
+data/test_database.db
+
+# Documentation and development files
+*.md
+docs/
+README*
+CHANGELOG*
+LICENSE*
+.gitignore
+.git/
+
+# Test files and reports
+test_*.py
+tests/
+*test*.json
+*test*.log
+performance_*.py
+run_*.py
+
+# Configuration files (use env vars instead)
+.env*
+config.local.*
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.bak
+
+# Development scripts
+setup_*.sh
+validate_*.py
+demo_*.py
+timing_*.py

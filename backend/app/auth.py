@@ -13,10 +13,9 @@ Security Features:
 import logging
 import re
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request, Depends, status
-from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 
 from .config import settings
@@ -76,9 +75,37 @@ def sanitize_username(username: str) -> Optional[str]:
         - Removes dangerous characters
         - Validates against pattern
         - Limits length to prevent DoS
+        - Prevents header injection attacks
+        - Detects suspicious patterns
     """
     if not username or not isinstance(username, str):
         return None
+    
+    # Prevent excessively long usernames (DoS protection)
+    if len(username) > 200:
+        auth_logger.warning(f"Username too long: {len(username)} characters")
+        log_suspicious_activity(
+            description="Unusually long username attempted",
+            details={"username_length": len(username), "truncated": username[:50]}
+        )
+        return None
+    
+    # Detect potential injection patterns before processing
+    suspicious_patterns = [
+        r'[<>"\'\n\r\t]',  # HTML/script injection
+        r'[\x00-\x1f\x7f-\x9f]',  # Control characters
+        r'(script|javascript|vbscript|onload|onerror)',  # Script injection keywords
+        r'(\|\||&&|;|`|\$\()',  # Command injection
+    ]
+    
+    for pattern in suspicious_patterns:
+        if re.search(pattern, username, re.IGNORECASE):
+            auth_logger.warning(f"Suspicious pattern detected in username: {pattern}")
+            log_suspicious_activity(
+                description="Potential injection attempt in username",
+                details={"pattern": pattern, "username_sample": username[:30]}
+            )
+            return None
     
     # Strip whitespace and convert to lowercase for consistency
     username = username.strip().lower()
@@ -91,9 +118,14 @@ def sanitize_username(username: str) -> Optional[str]:
         # Extract just the username part after domain
         username = username.split('\\', 1)[1]
     
-    # Validate username format
+    # Validate username format with stricter pattern
     if not USERNAME_PATTERN.match(username):
         auth_logger.warning(f"Invalid username format: {username[:20]}...")
+        return None
+    
+    # Additional length check after processing
+    if len(username) > 50:
+        auth_logger.warning(f"Processed username still too long: {len(username)}")
         return None
     
     return username
@@ -126,10 +158,28 @@ def extract_windows_username(request: Request) -> Optional[str]:
     username = None
     header_used = None
     
-    # Check each header in priority order
+    # Check each header in priority order with additional security validation
     for header in auth_headers:
         header_value = request.headers.get(header)
         if header_value:
+            # Additional header security validation
+            if len(header_value) > 500:  # Prevent excessively long headers
+                auth_logger.warning(f"Excessively long auth header: {header}")
+                log_suspicious_activity(
+                    description="Unusually long authentication header",
+                    details={"header": header, "length": len(header_value)}
+                )
+                continue
+                
+            # Check for suspicious header manipulation patterns
+            if '\n' in header_value or '\r' in header_value:
+                auth_logger.warning(f"Header injection attempt detected in {header}")
+                log_suspicious_activity(
+                    description="Header injection attempt detected",
+                    details={"header": header, "sample": header_value[:50]}
+                )
+                continue
+                
             username = sanitize_username(header_value)
             if username:
                 header_used = header
@@ -221,15 +271,15 @@ async def get_current_user(request: Request) -> UserInfo:
             auth_logger.error("Authentication failed - no valid username found")
             raise AuthenticationError("Authentication required")
         
-        # Check if user is admin
-        is_admin = username in [user.lower() for user in settings.admin_users]
+        # Check if user is admin using secure method (case-insensitive for better security)
+        is_admin = settings.is_admin_user(username)
         
         user_info = UserInfo(
             username=username,
             is_admin=is_admin,
             is_authenticated=True,
             auth_method=auth_method,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         
         # Log successful authentication
@@ -314,7 +364,7 @@ def validate_auth_headers(request: Request) -> Dict[str, Any]:
         "valid_headers": [],
         "invalid_headers": [],
         "security_warnings": [],
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.now(timezone.utc)
     }
     
     auth_headers = [

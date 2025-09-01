@@ -1,0 +1,41 @@
+{
+  "name": "credit-card-processor-frontend",
+  "version": "1.0.0",
+  "description": "Vue 3 frontend for Credit Card Processor application",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint . --ext .vue,.js,.jsx,.ts,.tsx --fix",
+    "lint:check": "eslint . --ext .vue,.js,.jsx,.ts,.tsx",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "pinia": "^2.1.7",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vitest/coverage-v8": "^1.1.0",
+    "@vitest/ui": "^1.1.0",
+    "@vue/test-utils": "^2.4.3",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.2",
+    "eslint-plugin-vitest-globals": "^1.4.0",
+    "eslint-plugin-vue": "^9.20.1",
+    "jsdom": "^23.2.0",
+    "postcss": "^8.4.32",
+    "prettier": "^3.1.1",
+    "tailwindcss": "^3.4.0",
+    "terser": "^5.43.1",
+    "vite": "^5.0.0",
+    "vitest": "^1.1.0"
+  }
+}

@@ -1,3 +1,11 @@
+# Credit Card Processor - Development Docker Compose Configuration
+# 
+# SECURITY NOTES:
+# - This configuration loads environment variables from .env file
+# - Ensure .env file contains proper security settings for your environment
+# - Never commit .env files containing production secrets to version control
+# - For production: use secure secret management and update all default values
+
 services:
   # Backend service - FastAPI with hot reload
   backend:
@@ -6,19 +14,35 @@ services:
       dockerfile: Dockerfile.dev
     container_name: credit-card-backend-dev
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       # Mount source code for hot reload
       - ./backend/app:/app/app:cached
       - ./backend/requirements.txt:/app/requirements.txt:ro
       # Persistent data storage
       - ./backend/data:/app/data:cached
+    env_file:
+      - .env
     environment:
       # Development environment settings
       - ENVIRONMENT=development
       - DATABASE_URL=sqlite:///./data/database.db
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
       - LOG_LEVEL=debug
+      
+      # Security environment variables (loaded from .env file)
+      - ADMIN_USERS=${ADMIN_USERS}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:-dev-session-secret-change-in-production-must-be-32-chars-minimum}
+      - SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES:-480}
+      - MAX_LOGIN_ATTEMPTS=${MAX_LOGIN_ATTEMPTS:-5}
+      - LOGIN_LOCKOUT_MINUTES=${LOGIN_LOCKOUT_MINUTES:-15}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://frontend:3000,http://localhost:8001}
+      - TRUSTED_HOSTS=${TRUSTED_HOSTS:-localhost,127.0.0.1,*.local}
+      - ENABLE_SECURITY_HEADERS=${ENABLE_SECURITY_HEADERS:-true}
+      - FORCE_HTTPS=${FORCE_HTTPS:-false}
+      - HSTS_MAX_AGE=${HSTS_MAX_AGE:-31536000}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_PERIOD=${RATE_LIMIT_PERIOD:-60}
+      
       # Hot reload settings
       - PYTHONPATH=/app
       - PYTHONDONTWRITEBYTECODE=1
@@ -26,7 +50,7 @@ services:
     networks:
       - credit-card-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -53,10 +77,12 @@ services:
       - ./frontend/index.html:/app/index.html:ro
       # Exclude node_modules to prevent conflicts
       - /app/node_modules
+    env_file:
+      - .env
     environment:
       # Vite development settings
       - NODE_ENV=development
-      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_API_BASE_URL=http://localhost:8001
       - VITE_APP_TITLE=Credit Card Processor (Dev)
       # Enable hot reload
       - CHOKIDAR_USEPOLLING=true

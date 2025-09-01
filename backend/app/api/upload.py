@@ -17,6 +17,14 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
+# Enhanced security imports
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
+    logger.warning("python-magic not available. Using basic MIME type validation only.")
+
 from ..database import get_db
 from ..auth import get_current_user, UserInfo
 from ..models import ProcessingSession, FileUpload, FileType, UploadStatus, SessionStatus, ProcessingActivity, ActivityType
@@ -68,16 +76,113 @@ def validate_file_upload(file: UploadFile) -> Dict[str, Any]:
         validation_result['errors'].append("Filename is required")
         return validation_result
     
+    # Sanitize filename to prevent path traversal
+    safe_filename = Path(file.filename).name
+    if safe_filename != file.filename:
+        validation_result['warnings'].append("Filename was sanitized for security")
+        validation_result['file_info']['sanitized_filename'] = safe_filename
+    
     # Check file extension
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         validation_result['valid'] = False
-        validation_result['errors'].append(f"Invalid file type. Only PDF files are allowed")
+        validation_result['errors'].append(f"Invalid file extension: {file_ext}. Only PDF files (.pdf) are allowed")
     
-    # Check MIME type
+    # Check declared MIME type (client-provided, can be spoofed)
     if file.content_type not in ALLOWED_MIME_TYPES:
         validation_result['valid'] = False
-        validation_result['errors'].append(f"Invalid content type: {file.content_type}. Only PDF files are allowed")
+        validation_result['errors'].append(f"Invalid declared content type: {file.content_type}. Only PDF files are allowed")
+    
+    return validation_result
+
+
+def validate_file_content_security(content: bytes, filename: str) -> Dict[str, Any]:
+    """
+    Enhanced server-side content validation using multiple detection methods
+    
+    Args:
+        content: File content as bytes
+        filename: Original filename
+        
+    Returns:
+        Dict with detailed validation results
+    """
+    validation_result = {
+        'valid': True,
+        'errors': [],
+        'warnings': [],
+        'detected_type': None,
+        'magic_mime': None,
+        'content_analysis': {}
+    }
+    
+    # Size validation
+    file_size = len(content)
+    validation_result['content_analysis']['size'] = file_size
+    
+    if file_size > MAX_FILE_SIZE:
+        validation_result['valid'] = False
+        validation_result['errors'].append(f"File size ({file_size} bytes) exceeds maximum allowed size ({MAX_FILE_SIZE} bytes)")
+        return validation_result
+    
+    if file_size < 100:  # Minimum reasonable PDF size
+        validation_result['valid'] = False
+        validation_result['errors'].append("File is too small to be a valid PDF")
+        return validation_result
+    
+    # Enhanced MIME type detection using python-magic if available
+    if MAGIC_AVAILABLE:
+        try:
+            # Detect MIME type from content (more reliable than client declaration)
+            detected_mime = magic.from_buffer(content, mime=True)
+            validation_result['magic_mime'] = detected_mime
+            validation_result['detected_type'] = detected_mime
+            
+            # Validate detected MIME type
+            if detected_mime not in ALLOWED_MIME_TYPES:
+                validation_result['valid'] = False
+                validation_result['errors'].append(f"Content analysis detected invalid file type: {detected_mime}. File may be disguised or corrupted.")
+            
+            # Get human-readable file type description
+            file_description = magic.from_buffer(content)
+            validation_result['content_analysis']['description'] = file_description
+            
+        except Exception as magic_error:
+            logger.warning(f"Magic library error for file {filename}: {magic_error}")
+            validation_result['warnings'].append("Enhanced content detection failed, using basic validation")
+    
+    # Fallback: Basic PDF content validation
+    if not validate_pdf_content(content):
+        validation_result['valid'] = False
+        validation_result['errors'].append("File content is not a valid PDF document")
+    
+    # Additional security checks
+    validation_result['content_analysis']['has_pdf_header'] = content.startswith(PDF_MAGIC_BYTES)
+    validation_result['content_analysis']['has_pdf_footer'] = b'%%EOF' in content[-1024:]
+    
+    # Check for potentially dangerous content patterns
+    dangerous_patterns = [
+        b'<script',  # JavaScript in PDF
+        b'javascript:',  # JavaScript URLs
+        b'/JS',  # PDF JavaScript objects
+        b'/JavaScript',  # PDF JavaScript
+        b'this.print',  # Auto-print attempts
+        b'app.alert',  # JavaScript alerts
+    ]
+    
+    dangerous_found = []
+    for pattern in dangerous_patterns:
+        if pattern.lower() in content.lower():
+            dangerous_found.append(pattern.decode('utf-8', errors='ignore'))
+    
+    if dangerous_found:
+        validation_result['warnings'].append(f"Potentially dangerous content detected: {', '.join(dangerous_found)}")
+        validation_result['content_analysis']['security_flags'] = dangerous_found
+    
+    # Log validation results for security monitoring
+    logger.info(f"File validation for {filename}: valid={validation_result['valid']}, "
+               f"detected_type={validation_result.get('detected_type', 'unknown')}, "
+               f"size={file_size}, security_flags={len(dangerous_found)}")
     
     return validation_result
 
@@ -305,19 +410,31 @@ async def upload_files_to_session(
                 # Read file content
                 content = await file_obj.read()
                 
-                # Check file size
-                if len(content) > MAX_FILE_SIZE:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"{file_name} file exceeds maximum size of {MAX_FILE_SIZE // (1024*1024)}MB"
-                    )
-                
-                # Validate PDF content
-                if not validate_pdf_content(content):
+                # Enhanced security validation of file content
+                content_validation = validate_file_content_security(content, file_obj.filename)
+                if not content_validation['valid']:
+                    security_errors = ', '.join(content_validation['errors'])
+                    logger.warning(f"Security validation failed for {file_name}: {security_errors}")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"{file_name} file is not a valid PDF"
+                        detail=f"{file_name} failed security validation: {security_errors}"
                     )
+                
+                # Log security warnings for monitoring
+                if content_validation['warnings']:
+                    security_warnings = ', '.join(content_validation['warnings'])
+                    logger.warning(f"Security warnings for {file_name}: {security_warnings}")
+                
+                # Log detected file type for audit trail
+                if content_validation.get('detected_type'):
+                    logger.info(f"File {file_name} detected as: {content_validation['detected_type']}")
+                
+                # Store validation metadata for potential future analysis
+                validation_metadata = {
+                    'magic_mime': content_validation.get('magic_mime'),
+                    'content_analysis': content_validation.get('content_analysis', {}),
+                    'security_flags': content_validation.get('content_analysis', {}).get('security_flags', [])
+                }
                 
                 # Calculate checksum
                 checksum = calculate_checksum(content)
@@ -380,7 +497,7 @@ async def upload_files_to_session(
         db_session.receipt_file_path = str(upload_dir / FILE_TYPES_TO_NAMES[FileType.RECEIPT])
         db_session.car_checksum = next(f["checksum"] for f in files_info if f["file_type"] == "car")
         db_session.receipt_checksum = next(f["checksum"] for f in files_info if f["file_type"] == "receipt")
-        db_session.status = SessionStatus.PROCESSING  # Update status to indicate files uploaded
+        # Keep session in PENDING status - processing starts only when explicitly requested
         db_session.updated_at = datetime.now(timezone.utc)
         
         # Log activity
@@ -413,7 +530,7 @@ async def upload_files_to_session(
             content={
                 "session_id": session_id,
                 "uploaded_files": uploaded_files,
-                "session_status": "processing",
+                "session_status": "pending",
                 "message": "Files uploaded successfully"
             }
         )

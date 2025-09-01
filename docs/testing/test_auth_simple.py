@@ -8,7 +8,7 @@ import sys
 import os
 import logging
 from unittest.mock import Mock
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add app directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
@@ -167,7 +167,7 @@ def test_userinfo_model():
         is_admin=True,
         is_authenticated=True,
         auth_method='windows',
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     
     assert user_info.username == 'rcox'

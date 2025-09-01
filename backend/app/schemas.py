@@ -36,6 +36,13 @@ class ProcessingOptions(BaseModel):
     skip_duplicates: bool = Field(default=True, description="Skip duplicate employee records")
     validation_threshold: float = Field(default=0.05, ge=0.0, le=1.0, description="Validation threshold (0.0-1.0)")
     auto_resolve_minor: bool = Field(default=False, description="Automatically resolve minor validation issues")
+    
+    # Delta processing options
+    enable_delta_processing: bool = Field(default=True, description="Enable delta processing optimization")
+    skip_unchanged_employees: bool = Field(default=True, description="Skip processing unchanged employees in delta mode")
+    amount_change_threshold: float = Field(default=0.01, ge=0.0, description="Minimum amount change to trigger reprocessing (dollars)")
+    force_reprocess_validation_issues: bool = Field(default=True, description="Always reprocess employees that had validation issues")
+    max_unchanged_skip_percentage: float = Field(default=0.8, ge=0.0, le=1.0, description="Maximum percentage of employees to skip (0.0-1.0)")
 
 
 class SessionCreateRequest(BaseModel):
@@ -317,7 +324,7 @@ class SessionStatusResponse(BaseModel):
 
 
 class ProcessingConfig(BaseModel):
-    """Processing configuration for background tasks"""
+    """Enhanced processing configuration for background tasks and mock processing"""
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -325,7 +332,10 @@ class ProcessingConfig(BaseModel):
                 "validation_threshold": 0.05,
                 "auto_resolve_minor": False,
                 "batch_size": 10,
-                "max_processing_time": 3600
+                "max_processing_time": 3600,
+                "employee_count": 45,
+                "processing_delay": 1.0,
+                "enable_mock_processing": True
             }
         }
     )
@@ -335,6 +345,11 @@ class ProcessingConfig(BaseModel):
     auto_resolve_minor: bool = Field(default=False, description="Automatically resolve minor validation issues")
     batch_size: int = Field(default=10, ge=1, le=100, description="Number of employees to process in each batch")
     max_processing_time: int = Field(default=3600, ge=60, le=14400, description="Maximum processing time in seconds (1-4 hours)")
+    
+    # Mock Processing Configuration
+    employee_count: int = Field(default=45, ge=1, le=100, description="Number of mock employees to process (mock mode only)")
+    processing_delay: float = Field(default=1.0, ge=0.1, le=5.0, description="Processing delay per employee in seconds (mock mode)")
+    enable_mock_processing: bool = Field(default=True, description="Enable mock document processing simulation")
 
 
 class ProcessingStartRequest(BaseModel):
@@ -347,7 +362,10 @@ class ProcessingStartRequest(BaseModel):
                     "validation_threshold": 0.05,
                     "auto_resolve_minor": False,
                     "batch_size": 10,
-                    "max_processing_time": 3600
+                    "max_processing_time": 3600,
+                    "employee_count": 45,
+                    "processing_delay": 1.0,
+                    "enable_mock_processing": True
                 }
             }
         }
@@ -363,13 +381,16 @@ class ProcessingResponse(BaseModel):
             "example": {
                 "session_id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "processing",
-                "message": "Background processing started successfully",
+                "message": "Mock document processing started successfully",
                 "processing_config": {
                     "skip_duplicates": True,
                     "validation_threshold": 0.05,
                     "auto_resolve_minor": False,
                     "batch_size": 10,
-                    "max_processing_time": 3600
+                    "max_processing_time": 3600,
+                    "employee_count": 45,
+                    "processing_delay": 1.0,
+                    "enable_mock_processing": True
                 },
                 "timestamp": "2024-03-01T10:00:00Z"
             }

@@ -9,12 +9,13 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from ..database import get_db
 from ..auth import get_current_user, UserInfo
+from ..cache import cached, cache, invalidate_cache_pattern
 from ..models import ProcessingSession, SessionStatus, EmployeeRevision, ProcessingActivity, FileUpload, ValidationStatus, ActivityType, FileType
 from ..schemas import (
     SessionCreateRequest,
@@ -122,7 +123,8 @@ async def create_session(
                     logger.warning(f"Delta session not found: {request.delta_session_id}")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Delta session {request.delta_session_id} not found"
+                        detail="Delta session not found",
+                        headers={"X-Error-Code": "DELTA_SESSION_NOT_FOUND"}
                     )
                 
                 # Check if user has access to delta session
@@ -132,14 +134,16 @@ async def create_session(
                     )
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Access denied to specified delta session"
+                        detail="Access denied to specified delta session",
+                        headers={"X-Error-Code": "ACCESS_DENIED"}
                     )
                     
             except ValueError:
                 logger.warning(f"Invalid delta session UUID: {request.delta_session_id}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid delta_session_id format"
+                    detail="Invalid delta_session_id format",
+                    headers={"X-Error-Code": "INVALID_UUID_FORMAT"}
                 )
         
         # Create new session
@@ -172,7 +176,8 @@ async def create_session(
         logger.error(f"Database error creating session: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create session due to database error"
+            detail="Failed to create session due to database error",
+            headers={"X-Error-Code": "DATABASE_ERROR"}
         )
     except Exception as e:
         db.rollback()
@@ -341,31 +346,41 @@ async def list_sessions(
         )
 
 
-def calculate_progress_statistics(session: ProcessingSession, db: Session) -> dict:
+def calculate_progress_statistics(session: ProcessingSession, db: Session = None) -> dict:
     """
     Calculate comprehensive progress statistics for a processing session
+    Optimized to use preloaded relationships to prevent N+1 queries
     
     Args:
-        session: ProcessingSession database object
-        db: Database session
+        session: ProcessingSession database object with preloaded employee_revisions
+        db: Database session (optional, kept for backward compatibility)
         
     Returns:
         Dictionary containing progress statistics
     """
-    # Get employee revision counts by validation status
-    employee_counts = db.query(
-        EmployeeRevision.validation_status,
-        func.count(EmployeeRevision.revision_id).label('count')
-    ).filter(
-        EmployeeRevision.session_id == session.session_id
-    ).group_by(EmployeeRevision.validation_status).all()
+    # Use preloaded employee_revisions to avoid additional queries
+    if hasattr(session, 'employee_revisions') and session.employee_revisions:
+        # Count by validation status using preloaded data
+        status_counts = {}
+        for revision in session.employee_revisions:
+            status = revision.validation_status
+            status_counts[status] = status_counts.get(status, 0) + 1
+        employee_counts = [(status, count) for status, count in status_counts.items()]
+    else:
+        # Fallback to database query if preloaded data not available
+        employee_counts = db.query(
+            EmployeeRevision.validation_status,
+            func.count(EmployeeRevision.revision_id).label('count')
+        ).filter(
+            EmployeeRevision.session_id == session.session_id
+        ).group_by(EmployeeRevision.validation_status).all()
     
     # Initialize counts
     completed_employees = 0
     issues_employees = 0
     processing_employees = 0
     
-    # Process counts from query results
+    # Process counts from query results or preloaded data
     for status_enum, count in employee_counts:
         if status_enum == ValidationStatus.VALID:
             completed_employees = count
@@ -394,13 +409,14 @@ def calculate_progress_statistics(session: ProcessingSession, db: Session) -> di
     }
 
 
-def get_current_employee(session: ProcessingSession, db: Session) -> Optional[CurrentEmployee]:
+def get_current_employee(session: ProcessingSession, db: Session = None) -> Optional[CurrentEmployee]:
     """
     Get information about the currently processing employee
+    Optimized to use preloaded relationships to prevent N+1 queries
     
     Args:
-        session: ProcessingSession database object
-        db: Database session
+        session: ProcessingSession database object with preloaded processing_activities
+        db: Database session (optional, kept for backward compatibility)
         
     Returns:
         CurrentEmployee object if processing, None otherwise
@@ -408,12 +424,22 @@ def get_current_employee(session: ProcessingSession, db: Session) -> Optional[Cu
     if session.status != SessionStatus.PROCESSING:
         return None
     
-    # Find most recent processing activity with employee info
-    recent_activity = db.query(ProcessingActivity).filter(
-        ProcessingActivity.session_id == session.session_id,
-        ProcessingActivity.employee_id.isnot(None),
-        ProcessingActivity.activity_type.in_([ActivityType.PROCESSING, ActivityType.VALIDATION])
-    ).order_by(ProcessingActivity.created_at.desc()).first()
+    # Use preloaded processing_activities to avoid additional queries
+    if hasattr(session, 'processing_activities') and session.processing_activities:
+        # Find most recent processing activity with employee info from preloaded data
+        recent_activity = None
+        for activity in session.processing_activities:
+            if (activity.employee_id and 
+                activity.activity_type in [ActivityType.PROCESSING, ActivityType.VALIDATION]):
+                if not recent_activity or activity.created_at > recent_activity.created_at:
+                    recent_activity = activity
+    else:
+        # Fallback to database query if preloaded data not available
+        recent_activity = db.query(ProcessingActivity).filter(
+            ProcessingActivity.session_id == session.session_id,
+            ProcessingActivity.employee_id.isnot(None),
+            ProcessingActivity.activity_type.in_([ActivityType.PROCESSING, ActivityType.VALIDATION])
+        ).order_by(ProcessingActivity.created_at.desc()).first()
     
     if not recent_activity:
         return None
@@ -600,8 +626,12 @@ async def get_session_status(
                 detail="Invalid session ID format"
             )
         
-        # Query session with optimized loading
-        db_session = db.query(ProcessingSession).filter(
+        # Query session with optimized loading using eager loading to prevent N+1 queries
+        db_session = db.query(ProcessingSession).options(
+            selectinload(ProcessingSession.employee_revisions),
+            selectinload(ProcessingSession.processing_activities),
+            selectinload(ProcessingSession.file_uploads)
+        ).filter(
             ProcessingSession.session_id == session_uuid
         ).first()
         

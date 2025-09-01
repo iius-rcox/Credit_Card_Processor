@@ -7,7 +7,7 @@ Tests all endpoints with real HTTP requests to validate complete functionality
 import requests
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class SessionAPITester:
@@ -29,7 +29,7 @@ class SessionAPITester:
         result = {
             'test_name': test_name,
             'success': success,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'details': details or {},
         }
         

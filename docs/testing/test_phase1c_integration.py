@@ -722,7 +722,7 @@ class Phase1CIntegrationTester:
         print("=" * 80)
         
         # Save detailed results to file
-        results_file = f"phase1c_qa_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        results_file = f"phase1c_qa_results_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
         with open(results_file, 'w') as f:
             json.dump(self.test_results, f, indent=2, default=str)
         
