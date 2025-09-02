@@ -1,0 +1,43 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - link "Skip to main content" [ref=e5] [cursor=pointer]:
+      - /url: "#main-content"
+    - banner [ref=e6]:
+      - generic [ref=e8]:
+        - banner [ref=e10]:
+          - generic [ref=e11]: CCP
+        - status "Authenticating user" [ref=e14]:
+          - generic [ref=e16]: Authenticating...
+    - main [ref=e17]:
+      - generic [ref=e20]:
+        - generic [ref=e22]:
+          - heading "Processing Sessions" [level=1] [ref=e23]:
+            - generic [ref=e24]: Processing Sessions
+          - paragraph [ref=e25]:
+            - generic [ref=e26]: Create or resume a processing session.
+        - generic [ref=e27]:
+          - button "Create new session." [ref=e28] [cursor=pointer]:
+            - generic [ref=e29] [cursor=pointer]:
+              - img [ref=e31] [cursor=pointer]
+              - heading "New Session" [level=3] [ref=e33] [cursor=pointer]
+              - paragraph [ref=e34] [cursor=pointer]:
+                - generic [ref=e35] [cursor=pointer]: Start new session
+          - button "Resume existing session. Click to view recent sessions" [ref=e36] [cursor=pointer]:
+            - generic [ref=e37] [cursor=pointer]:
+              - img [ref=e39] [cursor=pointer]
+              - heading "Resume Session" [level=3] [ref=e41] [cursor=pointer]
+              - paragraph [ref=e42] [cursor=pointer]:
+                - generic [ref=e43] [cursor=pointer]: Resume session
+          - button "Create custom session with specific settings. Click to open custom form" [ref=e44] [cursor=pointer]:
+            - generic [ref=e45] [cursor=pointer]:
+              - img [ref=e47] [cursor=pointer]
+              - heading "Custom Session" [level=3] [ref=e50] [cursor=pointer]
+              - paragraph [ref=e51] [cursor=pointer]: Create session with specific settings and options
+    - contentinfo [ref=e52]:
+      - paragraph [ref=e54]:
+        - generic [ref=e55]: CCP v1.0.0
+  - alert "Notification messages"
+```

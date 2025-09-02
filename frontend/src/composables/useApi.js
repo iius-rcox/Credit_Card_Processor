@@ -210,7 +210,7 @@ export function useApi() {
 
       // Update store on successful operations
       if (store && endpoint.includes('/sessions') && data.session_id) {
-        store.updateSession(data)
+        store.updateSession(data.session_id, data)
       }
 
       // Update performance metrics

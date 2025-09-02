@@ -396,81 +396,81 @@ class DeltaAwareProcessor:
                 # Copy unchanged employees from base session
                 await self._copy_unchanged_employees(session, base_session, change_analysis['unchanged'], user)
                 skipped_count = len(change_analysis['unchanged'])
-            
-            # Process only changed employees
-            employees_to_process = change_analysis['changes']
-            await log_processing_activity(
-                self.db, str(session.session_id), ActivityType.PROCESSING_PROGRESS,
-                f"Delta optimization: Skipping {skipped_count} unchanged employees, processing {len(employees_to_process)} changed",
-                user
-            )
-        else:
-            # Process all employees (delta disabled or too many changes)
-            employees_to_process = change_analysis['current_data']
-            await log_processing_activity(
-                self.db, str(session.session_id), ActivityType.PROCESSING_PROGRESS,
-                f"Processing all {len(employees_to_process)} employees (delta optimization bypassed)",
-                user
-            )
-        
-        # Process the selected employees
-        for i, emp_data in enumerate(employees_to_process):
-            # Check for pause/cancel requests
-            if processing_state.get("should_pause", False):
-                processing_state["status"] = "paused"
-                await update_session_status(self.db, str(session.session_id), SessionStatus.PAUSED)
+                
+                # Process only changed employees
+                employees_to_process = change_analysis['changes']
                 await log_processing_activity(
-                    self.db, str(session.session_id), ActivityType.PROCESSING_PAUSED,
-                    f"Processing paused at employee {processed_count + 1}",
+                    self.db, str(session.session_id), ActivityType.PROCESSING_PROGRESS,
+                    f"Delta optimization: Skipping {skipped_count} unchanged employees, processing {len(employees_to_process)} changed",
                     user
                 )
-                break
-            
-            if processing_state.get("should_cancel", False):
-                processing_state["status"] = "cancelled"
-                await update_session_status(self.db, str(session.session_id), SessionStatus.CANCELLED)
+            else:
+                # Process all employees (delta disabled or too many changes)
+                employees_to_process = change_analysis['current_data']
                 await log_processing_activity(
-                    self.db, str(session.session_id), ActivityType.PROCESSING_CANCELLED,
-                    f"Processing cancelled at employee {processed_count + 1}",
+                    self.db, str(session.session_id), ActivityType.PROCESSING_PROGRESS,
+                    f"Processing all {len(employees_to_process)} employees (delta optimization bypassed)",
                     user
                 )
-                break
             
-            try:
-                # Process individual employee
-                if isinstance(emp_data, EmployeeChangeInfo):
-                    employee_data = emp_data.current_data
-                    change_type = emp_data.change_type
-                else:
-                    employee_data = emp_data
-                    change_type = 'regular'
+            # Process the selected employees
+            for i, emp_data in enumerate(employees_to_process):
+                # Check for pause/cancel requests
+                if processing_state.get("should_pause", False):
+                    processing_state["status"] = "paused"
+                    await update_session_status(self.db, str(session.session_id), SessionStatus.PAUSED)
+                    await log_processing_activity(
+                        self.db, str(session.session_id), ActivityType.PROCESSING_PAUSED,
+                        f"Processing paused at employee {processed_count + 1}",
+                        user
+                    )
+                    break
                 
-                # Process individual employee (simplified for delta processing)
-                employee_result = await self._process_individual_employee(
-                    session, employee_data, user
-                )
+                if processing_state.get("should_cancel", False):
+                    processing_state["status"] = "cancelled"
+                    await update_session_status(self.db, str(session.session_id), SessionStatus.CANCELLED)
+                    await log_processing_activity(
+                        self.db, str(session.session_id), ActivityType.PROCESSING_CANCELLED,
+                        f"Processing cancelled at employee {processed_count + 1}",
+                        user
+                    )
+                    break
                 
-                if employee_result:
-                    processed_count += 1
-                    processing_state["current_employee_index"] = processed_count + skipped_count
+                try:
+                    # Process individual employee
+                    if isinstance(emp_data, EmployeeChangeInfo):
+                        employee_data = emp_data.current_data
+                        change_type = emp_data.change_type
+                    else:
+                        employee_data = emp_data
+                        change_type = 'regular'
                     
-                    # Log delta-specific information
-                    if change_type in ['modified', 'new']:
-                        await log_processing_activity(
-                            self.db, str(session.session_id), ActivityType.PROCESSING_PROGRESS,
-                            f"Processed {change_type} employee: {employee_data['name']}",
-                            user
-                        )
-                else:
-                    errors.append(f"Failed to process {employee_data['name']}")
+                    # Process individual employee (simplified for delta processing)
+                    employee_result = await self._process_individual_employee(
+                        session, employee_data, user
+                    )
                     
-            except Exception as e:
-                self.logger.error(f"Error processing employee {employee_data.get('name', 'unknown')}: {e}")
-                errors.append(f"Error processing {employee_data.get('name', 'unknown')}: {str(e)}")
+                    if employee_result:
+                        processed_count += 1
+                        processing_state["current_employee_index"] = processed_count + skipped_count
+                        
+                        # Log delta-specific information
+                        if change_type in ['modified', 'new']:
+                            await log_processing_activity(
+                                self.db, str(session.session_id), ActivityType.PROCESSING_PROGRESS,
+                                f"Processed {change_type} employee: {employee_data['name']}",
+                                user
+                            )
+                    else:
+                        errors.append(f"Failed to process {employee_data['name']}")
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing employee {employee_data.get('name', 'unknown')}: {e}")
+                    errors.append(f"Error processing {employee_data.get('name', 'unknown')}: {str(e)}")
+                
+                # Small delay to prevent overwhelming the system
+                await asyncio.sleep(0.1)
             
-            # Small delay to prevent overwhelming the system
-            await asyncio.sleep(0.1)
-        
             # Update final session status within transaction
             if not processing_state.get("should_pause", False) and not processing_state.get("should_cancel", False):
                 total_processed = processed_count + skipped_count

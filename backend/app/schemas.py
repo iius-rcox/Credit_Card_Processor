@@ -85,6 +85,35 @@ class SessionCreateRequest(BaseModel):
         return v
 
 
+class SessionUpdateRequest(BaseModel):
+    """Request model for updating an existing processing session"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "session_name": "Updated Monthly Processing - March 2024",
+                "status": "processing",
+                "processing_options": {
+                    "skip_duplicates": True,
+                    "validation_threshold": 0.05,
+                    "auto_resolve_minor": False
+                }
+            }
+        }
+    )
+    
+    session_name: Optional[str] = Field(default=None, min_length=1, max_length=255, description="Updated name for the processing session")
+    status: Optional[SessionStatus] = Field(default=None, description="Updated session status")
+    processing_options: Optional[ProcessingOptions] = Field(default=None, description="Updated processing configuration")
+
+    @field_validator('session_name')
+    @classmethod
+    def validate_session_name(cls, v):
+        """Validate session name"""
+        if v is not None and not v.strip():
+            raise ValueError('Session name cannot be empty or whitespace only')
+        return v.strip() if v else v
+
+
 class SessionResponse(BaseModel):
     """Response model for session information"""
     model_config = ConfigDict(

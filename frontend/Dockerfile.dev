@@ -17,7 +17,7 @@ WORKDIR /app
 # Copy package files and install dependencies
 # This is done first to leverage Docker layer caching
 COPY package*.json ./
-RUN npm ci --only=development --silent
+RUN npm install --silent && npm install vue-router@^4.2.5 --save
 
 # Copy configuration files
 COPY vite.config.js ./

@@ -23,6 +23,12 @@ try:
     MAGIC_AVAILABLE = True
 except ImportError:
     MAGIC_AVAILABLE = False
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+# Log warning if python-magic not available
+if not MAGIC_AVAILABLE:
     logger.warning("python-magic not available. Using basic MIME type validation only.")
 
 from ..database import get_db

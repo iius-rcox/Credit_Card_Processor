@@ -11,6 +11,13 @@ alembic>=1.16.0
 # Enhanced security dependencies (optional)
 python-magic>=0.4.27
 
+# System monitoring dependencies
+psutil>=5.9.0
+prometheus_client>=0.20.0
+
+# HTTP client dependencies
+aiohttp>=3.9.0
+
 # Testing dependencies
 pytest>=7.0.0
 httpx>=0.25.0

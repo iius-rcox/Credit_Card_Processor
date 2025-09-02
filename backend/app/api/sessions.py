@@ -19,6 +19,7 @@ from ..cache import cached, cache, invalidate_cache_pattern
 from ..models import ProcessingSession, SessionStatus, EmployeeRevision, ProcessingActivity, FileUpload, ValidationStatus, ActivityType, FileType
 from ..schemas import (
     SessionCreateRequest,
+    SessionUpdateRequest,
     SessionResponse, 
     SessionListResponse,
     SessionStatusResponse,
@@ -264,6 +265,125 @@ async def get_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve session due to internal error"
+        )
+
+
+@router.put("/{session_id}", response_model=SessionResponse)
+async def update_session(
+    session_id: str,
+    request: SessionUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Update an existing processing session
+    
+    Args:
+        session_id: UUID of the session to update
+        request: Session update request data
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        SessionResponse: Updated session information
+        
+    Raises:
+        HTTPException: 400 for validation errors, 403 for access denied, 404 for not found, 500 for database errors
+        
+    Security:
+        - Requires authentication
+        - Admins can update any session
+        - Non-admins can only update their own sessions
+        - Some status transitions may be restricted based on current state
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for update: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session from database
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for update: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(
+                f"User {current_user.username} attempted to update session {session_id} without permission"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this session"
+            )
+        
+        # Update fields that were provided
+        updated_fields = []
+        
+        if request.session_name is not None:
+            db_session.session_name = request.session_name
+            updated_fields.append("session_name")
+        
+        if request.status is not None:
+            # Validate status transition (basic validation - can be enhanced based on business rules)
+            if db_session.status == SessionStatus.COMPLETED and request.status != SessionStatus.COMPLETED:
+                logger.warning(f"Invalid status transition from {db_session.status} to {request.status}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot change status of completed session"
+                )
+            
+            db_session.status = request.status
+            updated_fields.append("status")
+        
+        if request.processing_options is not None:
+            db_session.processing_options = request.processing_options.model_dump()
+            updated_fields.append("processing_options")
+        
+        # Update timestamp
+        db_session.updated_at = datetime.now(timezone.utc)
+        
+        # Commit changes
+        db.commit()
+        db.refresh(db_session)
+        
+        logger.info(
+            f"Session updated successfully - ID: {session_id}, "
+            f"Updated fields: {', '.join(updated_fields)}, User: {current_user.username}"
+        )
+        
+        # Convert to response model
+        return convert_session_to_response(db_session)
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error updating session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update session due to database error",
+            headers={"X-Error-Code": "DATABASE_ERROR"}
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error updating session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update session due to internal error"
         )
 
 

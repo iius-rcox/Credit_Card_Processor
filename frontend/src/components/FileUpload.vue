@@ -780,7 +780,7 @@ const uploadCompleted = computed(
 )
 
 // File validation with enhanced security checks and consistent error handling
-function validateFile(file) {
+function validateUploadedFile(file) {
   if (!file) {
     return { 
       valid: false, 
@@ -1213,7 +1213,7 @@ function handleCarDrop(event) {
 async function setCarFile(file) {
   if (!file) return
 
-  const validation = validateFile(file)
+  const validation = validateUploadedFile(file)
   if (!validation.valid) {
     // Use centralized error handling for consistent reporting
     const validationError = errorHandler.createError(
@@ -1278,7 +1278,7 @@ function handleReceiptDrop(event) {
 async function setReceiptFile(file) {
   if (!file) return
 
-  const validation = validateFile(file)
+  const validation = validateUploadedFile(file)
   if (!validation.valid) {
     // Use centralized error handling for consistent reporting
     const validationError = errorHandler.createError(
