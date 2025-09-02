@@ -31,9 +31,9 @@ export function useAuth() {
 
   // Security validation for development user header
   const validateDevUser = () => {
-    if (process.env.NODE_ENV === 'development' && process.env.VITE_DEV_USER) {
+    if (import.meta.env.DEV && import.meta.env.VITE_DEV_USER) {
       // Warn if using development authentication
-      console.warn('🚨 DEVELOPMENT MODE: Using simulated Windows authentication with user:', process.env.VITE_DEV_USER)
+      console.warn('🚨 DEVELOPMENT MODE: Using simulated Windows authentication with user:', import.meta.env.VITE_DEV_USER)
       
       // Extra validation to prevent accidental production use
       if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -66,8 +66,8 @@ export function useAuth() {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           // Development mode header - only if explicitly configured
-          ...(process.env.NODE_ENV === 'development' && process.env.VITE_DEV_USER && {
-            'x-dev-user': process.env.VITE_DEV_USER
+          ...(import.meta.env.DEV && import.meta.env.VITE_DEV_USER && {
+            'x-dev-user': import.meta.env.VITE_DEV_USER
           })
         }
       })
@@ -374,8 +374,8 @@ export function useAuthenticatedApi() {
             'Content-Type': 'application/json',
             ...options.headers,
             // Add dev header if needed - only if explicitly configured
-            ...(process.env.NODE_ENV === 'development' && process.env.VITE_DEV_USER && {
-              'x-dev-user': process.env.VITE_DEV_USER
+            ...(import.meta.env.DEV && import.meta.env.VITE_DEV_USER && {
+              'x-dev-user': import.meta.env.VITE_DEV_USER
             })
           }
         })

@@ -242,6 +242,22 @@ onMounted(async () => {
 })
 
 /**
+ * Watch for processing status changes and start progress polling automatically
+ */
+watch(
+  () => sessionStore.status,
+  (newStatus, oldStatus) => {
+    if (newStatus === 'processing' && oldStatus !== 'processing' && sessionStore.sessionId) {
+      console.log('Processing started, beginning progress polling...')
+      progress.startPolling(sessionStore.sessionId)
+    } else if (newStatus !== 'processing' && progress.isPolling) {
+      console.log('Processing ended, stopping progress polling...')
+      progress.stopPolling()
+    }
+  }
+)
+
+/**
  * Set up global error handling for API calls
  */
 function setupGlobalErrorHandling() {

@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     export_path: str = "./data/exports"
     
     # File size limits
-    max_file_size_mb: int = 100
+    max_car_file_size_mb: int = 100
+    max_receipt_file_size_gb: int = 300
     
     # Processing
     max_employees: int = 100

@@ -208,8 +208,10 @@ export function useApi() {
         data = response
       }
 
-      // Update store on successful operations
-      if (store && endpoint.includes('/sessions') && data.session_id) {
+      // Update store on successful operations (but avoid infinite loops)
+      // Only trigger store.updateSession for POST (creation), not PUT (updates)
+      if (store && endpoint.includes('/sessions') && data.session_id && 
+          (options.method || 'GET').toUpperCase() === 'POST') {
         store.updateSession(data.session_id, data)
       }
 
@@ -547,13 +549,9 @@ export function useApi() {
     if (contentType?.includes('application/json')) {
       const data = await response.json()
       
-      // Auto-update store for session-related responses
-      if (store) {
-        if (endpoint.includes('/sessions/') && endpoint.includes('/status')) {
-          store.updateProcessingStatus(data)
-        } else if (endpoint.includes('/sessions') && data.session_id) {
-          store.updateSessionData(data)
-        }
+      // Auto-update store for session status polling only
+      if (store && endpoint.includes('/sessions/') && endpoint.includes('/status')) {
+        store.updateProcessingStatus(data)
       }
       
       return data

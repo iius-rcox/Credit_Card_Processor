@@ -7,7 +7,7 @@
           Upload Documents
         </h2>
         <p class="mt-2 text-sm text-gray-600" id="upload-section-description">
-          Upload both CAR and Receipt PDF files to begin processing. Maximum file size: 100MB each.
+          Upload both CAR and Receipt PDF files to begin processing. Maximum file sizes: CAR 100MB, Receipt 300GB.
         </p>
       </div>
     </div>
@@ -202,7 +202,7 @@
                     : 'Upload Receipt PDF'
                 }}
               </p>
-              <p class="text-xs text-gray-400">Click or drag and drop</p>
+              <p class="text-xs text-gray-400">Click to browse or drag and drop a PDF file (maximum 300GB)</p>
             </div>
 
             <!-- Selected File Display -->
@@ -590,9 +590,10 @@ const processingOptions = ref({
 })
 
 // Constants
-const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
-const UPLOAD_TIMEOUT = 10 * 60 * 1000 // 10 minutes
-const CHUNK_UPLOAD_TIMEOUT = 2 * 60 * 1000 // 2 minutes per chunk
+const MAX_CAR_FILE_SIZE = 100 * 1024 * 1024 // 100MB for CAR files
+const MAX_RECEIPT_FILE_SIZE = 300 * 1024 * 1024 * 1024 // 300GB for Receipt files
+const UPLOAD_TIMEOUT = 60 * 60 * 1000 // 1 hour for large files
+const CHUNK_UPLOAD_TIMEOUT = 10 * 60 * 1000 // 10 minutes per chunk for large files
 
 // Security utilities for comprehensive filename handling
 function sanitizeFilename(filename) {
@@ -645,7 +646,7 @@ function validateFilename(filename) {
     return { valid: false, error: 'Filename is required and must be a string' }
   }
   
-  // Length validation
+  // Length validation (Windows limit is 255 chars for filename, 260 for full path)
   if (filename.length < 1) {
     return { valid: false, error: 'Filename cannot be empty' }
   }
@@ -654,30 +655,28 @@ function validateFilename(filename) {
     return { valid: false, error: 'Filename too long (max 255 characters)' }
   }
   
-  // Character validation - only allow safe characters
-  const safePattern = /^[a-zA-Z0-9._-]+\.pdf$/i
-  if (!safePattern.test(filename)) {
-    return { valid: false, error: 'Filename contains invalid characters. Only letters, numbers, dots, hyphens, and underscores are allowed.' }
+  // Windows forbidden characters: < > : " | ? * \0 and control chars (0x00-0x1F)
+  // Also block path separators for security: \ /
+  const forbiddenCharsPattern = /[<>:"|?*\\\\/\x00-\x1f]/
+  if (forbiddenCharsPattern.test(filename)) {
+    return { valid: false, error: 'Filename contains forbidden characters. Cannot contain: < > : " | ? * \\ / or control characters.' }
   }
   
-  // Path traversal validation
-  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    return { valid: false, error: 'Filename contains path traversal characters' }
+  // Cannot end with dot or space (Windows restriction)
+  if (filename.endsWith('.') || filename.endsWith(' ')) {
+    return { valid: false, error: 'Filename cannot end with a dot or space' }
   }
   
-  // Null byte validation
-  if (filename.includes('\0')) {
-    return { valid: false, error: 'Filename contains null bytes' }
+  // Check for reserved Windows names (case-insensitive)
+  const baseName = filename.split('.')[0].toUpperCase()
+  const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9']
+  if (reservedNames.includes(baseName)) {
+    return { valid: false, error: `Filename cannot be a reserved Windows name: ${baseName}` }
   }
   
   // Ensure proper extension
   if (!filename.toLowerCase().endsWith('.pdf')) {
     return { valid: false, error: 'Filename must have .pdf extension' }
-  }
-  
-  // Prevent hidden files
-  if (filename.startsWith('.')) {
-    return { valid: false, error: 'Hidden files are not allowed' }
   }
   
   return { valid: true, error: null }
@@ -780,7 +779,7 @@ const uploadCompleted = computed(
 )
 
 // File validation with enhanced security checks and consistent error handling
-function validateUploadedFile(file) {
+function validateUploadedFile(file, fileType = 'car') {
   if (!file) {
     return { 
       valid: false, 
@@ -794,14 +793,8 @@ function validateUploadedFile(file) {
     // Comprehensive filename sanitization to prevent path traversal and other attacks
     const sanitizedName = sanitizeFilename(file.name)
     if (sanitizedName !== file.name) {
-      errorHandler.handle(
-        errorHandler.createError(
-          `File name sanitized for security: ${file.name} -> ${sanitizedName}`,
-          errorHandler.CATEGORY.SECURITY,
-          errorHandler.SEVERITY.WARNING,
-          { originalName: file.name, sanitizedName }
-        )
-      )
+      // Log filename sanitization for debugging but don't show to user (this is normal behavior)
+      console.info(`[SECURITY] File name sanitized for security: ${file.name} -> ${sanitizedName}`)
     }
     
     // Additional security validation for filename
@@ -831,12 +824,13 @@ function validateUploadedFile(file) {
       }
     }
 
-    // Enhanced size validation
-    if (file.size > MAX_FILE_SIZE) {
-      const maxSizeMB = Math.round(MAX_FILE_SIZE / (1024 * 1024))
+    // Enhanced size validation based on file type
+    const maxSize = fileType === 'receipt' ? MAX_RECEIPT_FILE_SIZE : MAX_CAR_FILE_SIZE
+    if (file.size > maxSize) {
+      const maxSizeDisplay = fileType === 'receipt' ? '300GB' : '100MB'
       return { 
         valid: false, 
-        error: `File size exceeds ${maxSizeMB}MB limit`,
+        error: `File size exceeds ${maxSizeDisplay} limit`,
         severity: errorHandler.SEVERITY.ERROR,
         category: errorHandler.CATEGORY.VALIDATION,
         serverValidationRequired: true
@@ -877,7 +871,7 @@ function validateUploadedFile(file) {
         nameStandard: sanitizedName === file.name,
         extensionValid: hasValidExtension,
         mimeTypeValid: hasValidMimeType,
-        sizeAppropriate: file.size >= 1000 && file.size <= MAX_FILE_SIZE
+        sizeAppropriate: file.size >= 1000 && file.size <= (fileType === 'receipt' ? MAX_RECEIPT_FILE_SIZE : MAX_CAR_FILE_SIZE)
       }
     }
     
@@ -1213,7 +1207,7 @@ function handleCarDrop(event) {
 async function setCarFile(file) {
   if (!file) return
 
-  const validation = validateUploadedFile(file)
+  const validation = validateUploadedFile(file, 'car')
   if (!validation.valid) {
     // Use centralized error handling for consistent reporting
     const validationError = errorHandler.createError(
@@ -1278,7 +1272,7 @@ function handleReceiptDrop(event) {
 async function setReceiptFile(file) {
   if (!file) return
 
-  const validation = validateUploadedFile(file)
+  const validation = validateUploadedFile(file, 'receipt')
   if (!validation.valid) {
     // Use centralized error handling for consistent reporting
     const validationError = errorHandler.createError(
@@ -1350,18 +1344,10 @@ async function uploadFiles() {
   receiptProgress.value = 0
 
   try {
-    // Check if files require chunked upload
-    const carRequiresChunking = carFile.value._validationMeta?.requiresChunking
-    const receiptRequiresChunking = receiptFile.value._validationMeta?.requiresChunking
-    const useChunkedUpload = carRequiresChunking || receiptRequiresChunking
-
-    if (useChunkedUpload) {
-      console.log('Using chunked upload for large files')
-      await performChunkedUpload()
-    } else {
-      console.log('Using standard upload for regular files')
-      await performStandardUpload()
-    }
+    // Temporarily disable chunked upload until backend endpoints are implemented
+    // Use standard upload for all files since backend can handle large files
+    console.log('Using standard upload for all files')
+    await performStandardUpload()
 
     // Mark both files as completed
     carUploadStatus.value = 'completed'
@@ -1369,9 +1355,32 @@ async function uploadFiles() {
     carProgress.value = 100
     receiptProgress.value = 100
 
-    // Notify session store of successful upload
-    sessionStore.markFilesUploaded()
-    sessionStore.setSuccess('Files uploaded successfully!')
+    // Register uploaded files with session store
+    sessionStore.addFile({
+      id: `car-${Date.now()}`,
+      name: carFile.value.name,
+      type: carFile.value.type,
+      size: carFile.value.size,
+      status: 'completed',
+      progress: 100,
+      fileType: 'car'
+    })
+    
+    sessionStore.addFile({
+      id: `receipt-${Date.now() + 1}`,
+      name: receiptFile.value.name,
+      type: receiptFile.value.type,
+      size: receiptFile.value.size,
+      status: 'completed',
+      progress: 100,
+      fileType: 'receipt'
+    })
+
+    // Show success notification to user
+    notificationStore.addSuccess('Files uploaded successfully!', {
+      title: 'Upload Complete',
+      duration: 5000
+    })
 
   } catch (error) {
     // Use centralized error handling for upload failures
@@ -1767,49 +1776,12 @@ async function startProcessing() {
   try {
     isProcessingStarted.value = true
     
-    // Start processing via API
-    const headers = {
-      'Content-Type': 'application/json'
-    }
-    
-    // Only add dev auth header in development environment
-    if (import.meta.env.DEV && import.meta.env.VITE_DEV_USER) {
-      headers['x-dev-user'] = import.meta.env.VITE_DEV_USER
-    }
-    
-    // Add CSRF token if available
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-    if (csrfToken) {
-      headers['X-CSRF-Token'] = csrfToken
-    }
-    
-    const response = await fetch(`/api/sessions/${props.sessionId}/process`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        processing_options: {
-          enable_validation: processingOptions.value.enableValidation,
-          enable_auto_resolution: processingOptions.value.enableAutoResolution,
-          enable_email_notifications: processingOptions.value.enableEmailNotifications,
-          enable_delta_processing: processingOptions.value.enableDeltaProcessing,
-          priority: processingOptions.value.priority
-        }
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to start processing: ${response.statusText}`)
-    }
-
-    const result = await response.json()
-    
-    // Update session store status
-    sessionStore.setProcessingStatus('processing')
+    // Use session store's startProcessing method which includes status polling
+    await sessionStore.startProcessing()
     
     // Emit processing started event
     emit('processing-started', {
       sessionId: props.sessionId,
-      processingId: result.processing_id,
       message: 'Processing started successfully'
     })
 

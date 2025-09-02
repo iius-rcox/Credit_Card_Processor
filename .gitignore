@@ -39,3 +39,6 @@ coverage/
 # Editor swap files
 *.swp
 *.swo
+
+# Example Reports - Contains test PDF files that should not be committed
+tests/example-reports/

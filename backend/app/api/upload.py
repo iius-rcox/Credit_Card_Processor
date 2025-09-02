@@ -43,7 +43,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sessions", tags=["file-upload"])
 
 # File validation constants
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
+MAX_CAR_FILE_SIZE = settings.max_car_file_size_mb * 1024 * 1024  # Convert MB to bytes
+MAX_RECEIPT_FILE_SIZE = settings.max_receipt_file_size_gb * 1024 * 1024 * 1024  # Convert GB to bytes
 ALLOWED_MIME_TYPES = {'application/pdf'}
 ALLOWED_EXTENSIONS = {'.pdf'}
 PDF_MAGIC_BYTES = b'%PDF-'
@@ -102,7 +103,7 @@ def validate_file_upload(file: UploadFile) -> Dict[str, Any]:
     return validation_result
 
 
-def validate_file_content_security(content: bytes, filename: str) -> Dict[str, Any]:
+def validate_file_content_security(content: bytes, filename: str, file_type: str = 'car') -> Dict[str, Any]:
     """
     Enhanced server-side content validation using multiple detection methods
     
@@ -122,13 +123,16 @@ def validate_file_content_security(content: bytes, filename: str) -> Dict[str, A
         'content_analysis': {}
     }
     
-    # Size validation
+    # Size validation based on file type
     file_size = len(content)
     validation_result['content_analysis']['size'] = file_size
     
-    if file_size > MAX_FILE_SIZE:
+    max_size = MAX_RECEIPT_FILE_SIZE if file_type == 'receipt' else MAX_CAR_FILE_SIZE
+    max_size_display = "300GB" if file_type == 'receipt' else "100MB"
+    
+    if file_size > max_size:
         validation_result['valid'] = False
-        validation_result['errors'].append(f"File size ({file_size} bytes) exceeds maximum allowed size ({MAX_FILE_SIZE} bytes)")
+        validation_result['errors'].append(f"File size ({file_size} bytes) exceeds maximum allowed size ({max_size_display})")
         return validation_result
     
     if file_size < 100:  # Minimum reasonable PDF size
@@ -215,8 +219,9 @@ def validate_pdf_content(content: bytes) -> bool:
         return False
     
     # Check for basic PDF structure elements
-    required_elements = [b'obj', b'endobj', b'trailer']
-    for element in required_elements:
+    # Modern PDFs may not have all traditional elements, so check for essential ones only
+    essential_elements = [b'obj', b'endobj']
+    for element in essential_elements:
         if element not in content:
             return False
     
@@ -320,7 +325,7 @@ def check_session_access_for_upload(db_session: ProcessingSession, current_user:
 async def upload_files_to_session(
     session_id: str,
     car_file: UploadFile = File(..., description="CAR file (PDF, max 100MB)"),
-    receipt_file: UploadFile = File(..., description="Receipt file (PDF, max 100MB)"),
+    receipt_file: UploadFile = File(..., description="Receipt file (PDF, max 300GB)"),
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user)
 ):
@@ -417,7 +422,8 @@ async def upload_files_to_session(
                 content = await file_obj.read()
                 
                 # Enhanced security validation of file content
-                content_validation = validate_file_content_security(content, file_obj.filename)
+                file_type_str = 'receipt' if file_type == FileType.RECEIPT else 'car'
+                content_validation = validate_file_content_security(content, file_obj.filename, file_type_str)
                 if not content_validation['valid']:
                     security_errors = ', '.join(content_validation['errors'])
                     logger.warning(f"Security validation failed for {file_name}: {security_errors}")

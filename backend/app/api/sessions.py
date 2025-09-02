@@ -16,13 +16,15 @@ from sqlalchemy import func, select
 from ..database import get_db
 from ..auth import get_current_user, UserInfo
 from ..cache import cached, cache, invalidate_cache_pattern
-from ..models import ProcessingSession, SessionStatus, EmployeeRevision, ProcessingActivity, FileUpload, ValidationStatus, ActivityType, FileType
+from ..models import ProcessingSession, EmployeeRevision, ProcessingActivity, FileUpload, ValidationStatus, ActivityType, FileType
+from ..models import SessionStatus as ModelSessionStatus
 from ..schemas import (
     SessionCreateRequest,
     SessionUpdateRequest,
     SessionResponse, 
     SessionListResponse,
     SessionStatusResponse,
+    SessionStatus as SchemaSessionStatus,
     CurrentEmployee,
     RecentActivity,
     ErrorResponse
@@ -151,7 +153,7 @@ async def create_session(
         new_session = ProcessingSession(
             session_name=request.session_name,
             created_by=f"DOMAIN\\{current_user.username}",  # Format as domain user
-            status=SessionStatus.PENDING,
+            status=ModelSessionStatus.PENDING,
             processing_options=request.processing_options.model_dump(),
             delta_session_id=delta_session.session_id if delta_session else None
         )
@@ -337,15 +339,18 @@ async def update_session(
             updated_fields.append("session_name")
         
         if request.status is not None:
+            # Convert schema enum to model enum
+            model_status = ModelSessionStatus(request.status.value)
+            
             # Validate status transition (basic validation - can be enhanced based on business rules)
-            if db_session.status == SessionStatus.COMPLETED and request.status != SessionStatus.COMPLETED:
-                logger.warning(f"Invalid status transition from {db_session.status} to {request.status}")
+            if db_session.status == ModelSessionStatus.COMPLETED and model_status != ModelSessionStatus.COMPLETED:
+                logger.warning(f"Invalid status transition from {db_session.status} to {model_status}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot change status of completed session"
                 )
             
-            db_session.status = request.status
+            db_session.status = model_status
             updated_fields.append("status")
         
         if request.processing_options is not None:
@@ -391,7 +396,7 @@ async def update_session(
 async def list_sessions(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    status_filter: Optional[SessionStatus] = Query(None, description="Filter by session status"),
+    status_filter: Optional[SchemaSessionStatus] = Query(None, description="Filter by session status"),
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user)
 ):
@@ -425,7 +430,8 @@ async def list_sessions(
         
         # Apply status filter if provided
         if status_filter:
-            query = query.filter(ProcessingSession.status == status_filter)
+            model_status = ModelSessionStatus(status_filter.value)
+            query = query.filter(ProcessingSession.status == model_status)
         
         # Order by creation date (newest first)
         query = query.order_by(ProcessingSession.created_at.desc())
@@ -517,7 +523,7 @@ def calculate_progress_statistics(session: ProcessingSession, db: Session = None
     if total_employees > 0:
         percent_complete = min(100, int((completed_employees / total_employees) * 100))
     else:
-        percent_complete = 0 if session.status == SessionStatus.PENDING else 100
+        percent_complete = 0 if session.status == ModelSessionStatus.PENDING else 100
     
     return {
         'total_employees': total_employees,
@@ -541,7 +547,7 @@ def get_current_employee(session: ProcessingSession, db: Session = None) -> Opti
     Returns:
         CurrentEmployee object if processing, None otherwise
     """
-    if session.status != SessionStatus.PROCESSING:
+    if session.status != ModelSessionStatus.PROCESSING:
         return None
     
     # Use preloaded processing_activities to avoid additional queries
@@ -595,7 +601,7 @@ def estimate_remaining_time(session: ProcessingSession, progress_stats: dict, db
     Returns:
         Formatted time string (HH:MM:SS) or None
     """
-    if session.status not in [SessionStatus.PROCESSING] or progress_stats['total_employees'] == 0:
+    if session.status not in [ModelSessionStatus.PROCESSING] or progress_stats['total_employees'] == 0:
         return None
     
     # Get processing start time from first processing activity
@@ -608,7 +614,12 @@ def estimate_remaining_time(session: ProcessingSession, progress_stats: dict, db
         return None
     
     # Calculate processing rate
-    elapsed_time = datetime.now(timezone.utc) - first_activity.created_at
+    # Ensure both datetimes have timezone info for proper subtraction
+    now_utc = datetime.now(timezone.utc)
+    activity_time = first_activity.created_at
+    if activity_time.tzinfo is None:
+        activity_time = activity_time.replace(tzinfo=timezone.utc)
+    elapsed_time = now_utc - activity_time
     completed = progress_stats['completed_employees']
     
     if completed == 0 or elapsed_time.total_seconds() == 0:

@@ -27,6 +27,7 @@ from ..schemas import (
     ProcessingStartRequest, ProcessingResponse, ProcessingControlResponse,
     ProcessingConfig, ErrorResponse
 )
+from ..services.document_intelligence import get_document_processor
 from ..services.mock_processor import simulate_document_processing, log_processing_activity, update_session_status
 from ..services.delta_aware_processor import (
     DeltaAwareProcessor, create_delta_processing_config, should_use_delta_processing
@@ -93,6 +94,179 @@ def check_session_access(db_session: ProcessingSession, current_user: UserInfo) 
     
     return session_creator == current_user.username.lower()
 
+
+
+async def process_documents_with_intelligence(
+    session_id: str,
+    db: Session,
+    processor,
+    processing_state: Dict[str, Any],
+    processing_config: Dict[str, Any]
+) -> bool:
+    """
+    Process documents using Azure Document Intelligence or fallback processor
+    
+    Args:
+        session_id: UUID of the session to process
+        db: Database session
+        processor: Document processor instance (Azure or mock)
+        processing_state: Processing state tracking
+        processing_config: Processing configuration
+        
+    Returns:
+        True if processing completed successfully, False otherwise
+    """
+    try:
+        session_uuid = uuid.UUID(session_id)
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.error(f"Session not found for processing: {session_id}")
+            return False
+        
+        # Get uploaded files
+        car_file = db.query(FileUpload).filter(
+            FileUpload.session_id == session_uuid,
+            FileUpload.file_type == FileType.CAR
+        ).first()
+        
+        receipt_file = db.query(FileUpload).filter(
+            FileUpload.session_id == session_uuid,
+            FileUpload.file_type == FileType.RECEIPT
+        ).first()
+        
+        if not car_file or not receipt_file:
+            logger.error(f"Required files not found for session {session_id}")
+            return False
+        
+        # Update session status
+        update_session_status(db, db_session, ModelSessionStatus.PROCESSING)
+        
+        # Log processing start
+        log_processing_activity(
+            db, session_id, ActivityType.PROCESSING,
+            "Real document processing started - analyzing PDF files with OCR",
+            created_by="system"
+        )
+        
+        # Process CAR document
+        logger.info(f"Processing CAR document: {car_file.file_path}")
+        car_employees = await processor.process_car_document(car_file.file_path)
+        
+        # Process Receipt document  
+        logger.info(f"Processing Receipt document: {receipt_file.file_path}")
+        receipt_employees = await processor.process_receipt_document(receipt_file.file_path)
+        
+        # Merge and validate employee data
+        all_employees = merge_employee_data(car_employees, receipt_employees)
+        
+        # Save employee data to database
+        total_employees = len(all_employees)
+        processed_count = 0
+        
+        for i, employee_data in enumerate(all_employees):
+            # Check for cancellation
+            if processing_state.get("status") == "cancelled":
+                logger.info(f"Processing cancelled for session {session_id}")
+                return False
+            
+            # Create employee revision
+            employee = EmployeeRevision(
+                session_id=session_uuid,
+                employee_id=employee_data.get('employee_id'),
+                employee_name=employee_data.get('employee_name'),
+                department=employee_data.get('department'),
+                position=employee_data.get('position'),
+                amount=employee_data.get('amount'),
+                validation_status=employee_data.get('validation_status', ValidationStatus.VALID),
+                extracted_data=employee_data
+            )
+            
+            db.add(employee)
+            processed_count += 1
+            
+            # Update progress
+            percent_complete = int((processed_count / total_employees) * 100)
+            
+            # Log progress periodically
+            if processed_count % 5 == 0 or processed_count == total_employees:
+                log_processing_activity(
+                    db, session_id, ActivityType.PROCESSING,
+                    f"Processing progress: {processed_count}/{total_employees} employees ({percent_complete}%)",
+                    created_by="system"
+                )
+                
+            # Small delay for progress tracking
+            await asyncio.sleep(0.1)
+        
+        # Update session totals
+        db_session.total_employees = total_employees
+        db_session.processed_employees = processed_count
+        
+        # Complete processing
+        update_session_status(db, db_session, ModelSessionStatus.COMPLETED)
+        
+        # Log completion
+        issues_count = sum(1 for emp in all_employees if emp.get('validation_status') == ValidationStatus.NEEDS_ATTENTION)
+        log_processing_activity(
+            db, session_id, ActivityType.PROCESSING,
+            f"Real document processing completed successfully - {processed_count} employees processed ({processed_count - issues_count} valid, {issues_count} with issues)",
+            created_by="system"
+        )
+        
+        db.commit()
+        logger.info(f"Real document processing completed successfully for session {session_id} - {processed_count} employees, {issues_count} issues detected")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error in real document processing for session {session_id}: {str(e)}")
+        update_session_status(db, db_session, ModelSessionStatus.ERROR)
+        db.rollback()
+        return False
+
+
+def merge_employee_data(car_employees: List[Dict], receipt_employees: List[Dict]) -> List[Dict]:
+    """
+    Merge employee data from CAR and Receipt documents
+    
+    Args:
+        car_employees: Employee data from CAR document
+        receipt_employees: Employee data from Receipt document
+        
+    Returns:
+        Merged list of employee data
+    """
+    # Create a dictionary for quick lookup
+    receipt_lookup = {emp.get('employee_id'): emp for emp in receipt_employees}
+    
+    merged_employees = []
+    
+    for car_emp in car_employees:
+        employee_id = car_emp.get('employee_id')
+        receipt_emp = receipt_lookup.get(employee_id, {})
+        
+        # Merge data with CAR taking priority for basic info
+        merged_emp = {
+            'employee_id': employee_id,
+            'employee_name': car_emp.get('employee_name', receipt_emp.get('employee_name')),
+            'department': car_emp.get('department', receipt_emp.get('department')),
+            'position': car_emp.get('position', receipt_emp.get('position')),
+            'amount': car_emp.get('amount', receipt_emp.get('amount')),
+            'car_data': car_emp,
+            'receipt_data': receipt_emp,
+            'validation_status': ValidationStatus.VALID
+        }
+        
+        # Basic validation
+        if not merged_emp['employee_name'] or not merged_emp['amount']:
+            merged_emp['validation_status'] = ValidationStatus.NEEDS_ATTENTION
+        
+        merged_employees.append(merged_emp)
+    
+    return merged_employees
 
 
 async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
@@ -168,12 +342,16 @@ async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
                            f"Skipped: {result.get('skipped_count', 0)}, "
                            f"Total: {result.get('total_employees', 0)}")
         else:
-            logger.info(f"Using regular processing for session {session_id}")
+            logger.info(f"Using real document processing for session {session_id}")
             
-            # Execute regular mock document processing
-            success = await simulate_document_processing(
+            # Get the document processor (Azure or fallback)
+            processor = get_document_processor()
+            
+            # Execute real document processing
+            success = await process_documents_with_intelligence(
                 session_id=session_id,
                 db=db,
+                processor=processor,
                 processing_state=processing_state,
                 processing_config=config
             )

@@ -666,14 +666,12 @@ export const useSessionStore = defineStore('session', () => {
 
         // Update status and progress
         status.value = statusData.status
-        progress.value = statusData.progress || 0
+        progress.value = statusData.percent_complete || statusData.progress || 0
 
         // Add new activities if any
-        if (
-          statusData.activities &&
-          statusData.activities.length > activities.value.length
-        ) {
-          const newActivities = statusData.activities.slice(
+        const responseActivities = statusData.recent_activities || statusData.activities || []
+        if (responseActivities.length > activities.value.length) {
+          const newActivities = responseActivities.slice(
             activities.value.length
           )
           activities.value.push(...newActivities)
