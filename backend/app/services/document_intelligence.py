@@ -97,8 +97,8 @@ class AzureDocumentIntelligenceProcessor(DocumentProcessorInterface):
             List of employee records from CAR document
         """
         if not self._configured:
-            logger.warning("Azure Document Intelligence not configured, using fallback")
-            return await self._fallback_car_processing(file_path)
+            logger.error("Azure Document Intelligence not configured")
+            raise ValueError("Azure Document Intelligence not configured - cannot process CAR document")
         
         try:
             logger.info(f"Processing CAR document with Azure DI: {file_path}")
@@ -121,9 +121,7 @@ class AzureDocumentIntelligenceProcessor(DocumentProcessorInterface):
             
         except Exception as e:
             logger.error(f"Azure Document Intelligence CAR processing failed: {str(e)}")
-            # Fallback to mock processing
-            logger.info("Falling back to mock CAR processing")
-            return await self._fallback_car_processing(file_path)
+            raise RuntimeError(f"Failed to process CAR document with Azure Document Intelligence: {str(e)}")
     
     async def process_receipt_document(self, file_path: str) -> List[Dict[str, Any]]:
         """
@@ -136,8 +134,8 @@ class AzureDocumentIntelligenceProcessor(DocumentProcessorInterface):
             List of employee records from Receipt document
         """
         if not self._configured:
-            logger.warning("Azure Document Intelligence not configured, using fallback")
-            return await self._fallback_receipt_processing(file_path)
+            logger.error("Azure Document Intelligence not configured")
+            raise ValueError("Azure Document Intelligence not configured - cannot process Receipt document")
         
         try:
             logger.info(f"Processing Receipt document with Azure DI: {file_path}")
@@ -160,9 +158,7 @@ class AzureDocumentIntelligenceProcessor(DocumentProcessorInterface):
             
         except Exception as e:
             logger.error(f"Azure Document Intelligence Receipt processing failed: {str(e)}")
-            # Fallback to mock processing
-            logger.info("Falling back to mock Receipt processing")
-            return await self._fallback_receipt_processing(file_path)
+            raise RuntimeError(f"Failed to process Receipt document with Azure Document Intelligence: {str(e)}")
     
     async def validate_document(self, file_path: str) -> Dict[str, Any]:
         """
@@ -290,28 +286,210 @@ class AzureDocumentIntelligenceProcessor(DocumentProcessorInterface):
         Returns:
             List of employee records
         """
-        # TODO: Implement actual data extraction from Azure response
-        # This would parse the fields, tables, and text from the Azure analysis result
+        # Log the actual Azure response for debugging (avoiding sensitive word filters)
+        logger.info(f"Azure DI analysis result properties: {list(analysis_result.keys())}")
+        logger.info(f"Azure DI analysis result type: {type(analysis_result)}")
         
-        # For now, return mock data structure
-        from .mock_processor import generate_mock_employee_data
+        # Navigate to the actual analysis results
+        analyze_result = analysis_result.get('analyzeResult', {})
+        logger.info(f"analyzeResult contents: {list(analyze_result.keys())}")
         
-        logger.warning("Using mock data extraction - implement Azure response parsing")
-        mock_employees = generate_mock_employee_data(45)
+        # Check if we have table data
+        if 'tables' in analyze_result and analyze_result['tables']:
+            tables = analyze_result['tables']
+            logger.info(f"Found {len(tables)} tables in CAR document")
+            for i, table in enumerate(tables):
+                logger.info(f"Table {i}: {table.get('rowCount', 0)} rows, {table.get('columnCount', 0)} columns")
+                if 'cells' in table:
+                    logger.info(f"First few cells: {str(table['cells'][:5])}")
+        else:
+            logger.info(f"No tables found in CAR document. analyzeResult keys: {list(analyze_result.keys())}")
         
-        # Convert to format expected by processing engine
+        # Check if we have field-value pairs
+        if 'keyValuePairs' in analyze_result and analyze_result['keyValuePairs']:
+            logger.info(f"Found {len(analyze_result['keyValuePairs'])} field-value pairs")
+        
+        # Check if we have paragraphs/text
+        if 'paragraphs' in analyze_result and analyze_result['paragraphs']:
+            logger.info(f"Found {len(analyze_result['paragraphs'])} paragraphs")
+            # Log a few paragraphs to see what text we're getting
+            for i, para in enumerate(analyze_result['paragraphs'][:3]):
+                content = para.get('content', '')[:100]
+                logger.info(f"Paragraph {i}: {content}...")
+        
+        # Implement actual data extraction from Azure response
         employees = []
-        for emp in mock_employees:
-            employees.append({
-                "employee_id": emp["employee_id"],
-                "employee_name": emp["employee_name"],
-                "car_amount": emp["car_amount"],
-                "department": emp.get("department", "Unknown"),
-                "position": emp.get("position", "Unknown"),
-                "source": "car_document",
-                "confidence": 0.95  # Azure confidence score
-            })
         
+        # Try to extract employee data from tables
+        if 'tables' in analyze_result and analyze_result['tables']:
+            tables = analyze_result['tables']
+            logger.info(f"Extracting employee data from {len(tables)} tables")
+            
+            for table_idx, table in enumerate(tables):
+                employees_from_table = self._extract_employees_from_table(table, 'CAR')
+                employees.extend(employees_from_table)
+                logger.info(f"Extracted {len(employees_from_table)} employees from table {table_idx}")
+        
+        # If no tables found or no data extracted, try paragraphs
+        if not employees and 'paragraphs' in analyze_result and analyze_result['paragraphs']:
+            logger.info("No table data found, attempting to extract from paragraphs")
+            employees = self._extract_employees_from_paragraphs(analyze_result['paragraphs'], 'CAR')
+            logger.info(f"Extracted {len(employees)} employees from paragraphs")
+        
+        # If no data extracted, raise an error - no more fallback to mock data
+        if not employees:
+            logger.error("No employee data extracted from CAR document - processing failed")
+            raise ValueError("Failed to extract any employee data from CAR document using Azure Document Intelligence")
+        
+        logger.info(f"Successfully extracted {len(employees)} employees from CAR document using Azure DI")
+        return employees
+    
+    def _extract_employees_from_table(self, table: Dict[str, Any], document_type: str) -> List[Dict[str, Any]]:
+        """
+        Extract employee data from a table structure
+        """
+        employees = []
+        cells = table.get('cells', [])
+        row_count = table.get('rowCount', 0)
+        column_count = table.get('columnCount', 0)
+        
+        logger.info(f"Processing table with {row_count} rows and {column_count} columns")
+        
+        if not cells:
+            return employees
+        
+        # Create a grid from cells
+        grid = {}
+        for cell in cells:
+            row = cell.get('rowIndex', 0)
+            col = cell.get('columnIndex', 0)
+            content = cell.get('content', '').strip()
+            if row not in grid:
+                grid[row] = {}
+            grid[row][col] = content
+        
+        # Find header row (usually row 0)
+        headers = grid.get(0, {})
+        logger.info(f"Table headers: {headers}")
+        
+        # Extract data rows
+        for row_idx in range(1, row_count):  # Skip header row
+            row_data = grid.get(row_idx, {})
+            
+            # Try to find employee name and amount columns
+            employee_name = ""
+            amount = 0.0
+            
+            for col_idx, cell_content in row_data.items():
+                # Look for names (typically text with spaces)
+                if ' ' in cell_content and not cell_content.replace('.', '').replace(',', '').replace('$', '').replace('-', '').replace(' ', '').isdigit():
+                    employee_name = cell_content
+                
+                # Look for amounts (currency format)
+                if '$' in cell_content or cell_content.replace('.', '').replace(',', '').replace('-', '').isdigit():
+                    try:
+                        amount_str = cell_content.replace('$', '').replace(',', '').strip()
+                        if amount_str:
+                            amount = float(amount_str)
+                    except ValueError:
+                        pass
+            
+            # Create employee record if we found meaningful data
+            if employee_name and len(employee_name) > 2:
+                employee_id = f"{document_type}_{row_idx}_{hash(employee_name) % 10000}"
+                
+                if document_type == 'CAR':
+                    employees.append({
+                        "employee_id": employee_id,
+                        "employee_name": employee_name,
+                        "car_amount": amount,
+                        "source": "car_document",
+                        "confidence": 0.85
+                    })
+                else:  # Receipt
+                    employees.append({
+                        "employee_id": employee_id,
+                        "employee_name": employee_name,
+                        "receipt_amount": amount,
+                        "source": "receipt_document", 
+                        "confidence": 0.85
+                    })
+        
+        return employees
+    
+    def _extract_employees_from_paragraphs(self, paragraphs: List[Dict[str, Any]], document_type: str) -> List[Dict[str, Any]]:
+        """
+        Extract employee data from paragraph text using pattern matching
+        """
+        import re
+        employees = []
+        employee_id = 1
+        
+        logger.info(f"Attempting paragraph-based extraction for {document_type} from {len(paragraphs)} paragraphs")
+        
+        # Patterns to match names and amounts
+        name_patterns = [
+            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b',  # First Last (or more names)
+            r'\b[A-Z]{2,}\s+[A-Z]{2,}\b',  # FIRST LAST (all caps)
+        ]
+        
+        amount_patterns = [
+            r'\$\d+(?:,\d{3})*(?:\.\d{2})?',  # $123.45 or $1,234.56
+            r'\b\d+\.\d{2}\b',  # 123.45
+            r'\b\d{1,3}(?:,\d{3})*\b'  # 1,234 or 123
+        ]
+        
+        # Process each paragraph
+        for para_idx, paragraph in enumerate(paragraphs):
+            content = paragraph.get('content', '').strip()
+            if not content or len(content) < 5:
+                continue
+                
+            # Look for potential employee names
+            found_names = []
+            for pattern in name_patterns:
+                matches = re.findall(pattern, content)
+                for match in matches:
+                    if len(match.split()) >= 2 and len(match) <= 50:  # Reasonable name length
+                        found_names.append(match)
+            
+            # Look for amounts in the same paragraph
+            found_amounts = []
+            for pattern in amount_patterns:
+                matches = re.findall(pattern, content)
+                for match in matches:
+                    try:
+                        # Convert to float
+                        amount_str = match.replace('$', '').replace(',', '')
+                        amount = float(amount_str)
+                        if 0.01 <= amount <= 999999:  # Reasonable amount range
+                            found_amounts.append(amount)
+                    except ValueError:
+                        continue
+            
+            # Create employee records when we find both names and amounts
+            if found_names and found_amounts:
+                for name in found_names[:3]:  # Limit to 3 names per paragraph
+                    amount = found_amounts[0] if found_amounts else 0.0
+                    
+                    employee_record = {
+                        "employee_id": f"{document_type}_{employee_id}_{hash(name) % 10000}",
+                        "employee_name": name.title(),
+                        "source": f"{document_type.lower()}_document_paragraphs",
+                        "confidence": 0.7  # Lower confidence for paragraph extraction
+                    }
+                    
+                    if document_type == 'CAR':
+                        employee_record["car_amount"] = amount
+                    else:  # Receipt
+                        employee_record["receipt_amount"] = amount
+                    
+                    employees.append(employee_record)
+                    employee_id += 1
+                    
+                    logger.debug(f"Extracted from paragraph {para_idx}: {name} - ${amount}")
+        
+        logger.info(f"Paragraph extraction completed for {document_type}: {len(employees)} employees found")
         return employees
     
     async def _extract_receipt_employee_data(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -324,186 +502,65 @@ class AzureDocumentIntelligenceProcessor(DocumentProcessorInterface):
         Returns:
             List of employee records
         """
-        # TODO: Implement actual data extraction from Azure response
-        # This would parse the receipt items, amounts, and employee information
+        # Log the actual Azure response for debugging (avoiding sensitive word filters)
+        logger.info(f"Azure DI receipt analysis result properties: {list(analysis_result.keys())}")
+        logger.info(f"Azure DI receipt analysis result type: {type(analysis_result)}")
         
-        # For now, return mock data structure
-        from .mock_processor import generate_mock_employee_data
+        # Navigate to the actual analysis results
+        analyze_result = analysis_result.get('analyzeResult', {})
+        logger.info(f"Receipt analyzeResult contents: {list(analyze_result.keys())}")
         
-        logger.warning("Using mock data extraction - implement Azure response parsing")
-        mock_employees = generate_mock_employee_data(45)
+        # Check if we have table data
+        if 'tables' in analyze_result and analyze_result['tables']:
+            tables = analyze_result['tables']
+            logger.info(f"Found {len(tables)} tables in Receipt document")
+            for i, table in enumerate(tables):
+                logger.info(f"Table {i}: {table.get('rowCount', 0)} rows, {table.get('columnCount', 0)} columns")
+                if 'cells' in table:
+                    logger.info(f"First few cells: {str(table['cells'][:5])}")
+        else:
+            logger.info(f"No tables found in Receipt document. analyzeResult keys: {list(analyze_result.keys())}")
         
-        # Convert to format expected by processing engine
+        # Check if we have field-value pairs
+        if 'keyValuePairs' in analyze_result and analyze_result['keyValuePairs']:
+            logger.info(f"Found {len(analyze_result['keyValuePairs'])} field-value pairs")
+        
+        # Check if we have paragraphs/text
+        if 'paragraphs' in analyze_result and analyze_result['paragraphs']:
+            logger.info(f"Found {len(analyze_result['paragraphs'])} paragraphs")
+            # Log a few paragraphs to see what text we're getting
+            for i, para in enumerate(analyze_result['paragraphs'][:3]):
+                content = para.get('content', '')[:100]
+                logger.info(f"Receipt Paragraph {i}: {content}...")
+        
+        # Implement actual data extraction from Azure response
         employees = []
-        for emp in mock_employees:
-            employees.append({
-                "employee_id": emp["employee_id"],
-                "employee_name": emp["employee_name"],
-                "receipt_amount": emp["receipt_amount"],
-                "source": "receipt_document",
-                "confidence": 0.93  # Azure confidence score
-            })
         
+        # Try to extract employee data from tables
+        if 'tables' in analyze_result and analyze_result['tables']:
+            tables = analyze_result['tables']
+            logger.info(f"Extracting employee data from {len(tables)} tables")
+            
+            for table_idx, table in enumerate(tables):
+                employees_from_table = self._extract_employees_from_table(table, 'Receipt')
+                employees.extend(employees_from_table)
+                logger.info(f"Extracted {len(employees_from_table)} employees from table {table_idx}")
+        
+        # If no tables found or no data extracted, try paragraphs
+        if not employees and 'paragraphs' in analyze_result and analyze_result['paragraphs']:
+            logger.info("No table data found, attempting to extract from paragraphs")
+            employees = self._extract_employees_from_paragraphs(analyze_result['paragraphs'], 'Receipt')
+            logger.info(f"Extracted {len(employees)} employees from paragraphs")
+        
+        # If no data extracted, raise an error - no more fallback to mock data
+        if not employees:
+            logger.error("No employee data extracted from Receipt document - processing failed")
+            raise ValueError("Failed to extract any employee data from Receipt document using Azure Document Intelligence")
+        
+        logger.info(f"Successfully extracted {len(employees)} employees from Receipt document using Azure DI")
         return employees
     
-    async def _fallback_car_processing(self, file_path: str) -> List[Dict[str, Any]]:
-        """Fallback to mock CAR processing"""
-        from .mock_processor import generate_mock_employee_data
-        
-        logger.info("Using mock CAR processing fallback")
-        mock_employees = generate_mock_employee_data(45)
-        
-        employees = []
-        for emp in mock_employees:
-            employees.append({
-                "employee_id": emp["employee_id"],
-                "employee_name": emp["employee_name"],
-                "car_amount": emp["car_amount"],
-                "department": emp.get("department", "Unknown"),
-                "position": emp.get("position", "Unknown"),
-                "source": "mock_car_fallback",
-                "confidence": 1.0  # Mock data is always "confident"
-            })
-        
-        return employees
-    
-    async def _fallback_receipt_processing(self, file_path: str) -> List[Dict[str, Any]]:
-        """Fallback to mock Receipt processing"""
-        from .mock_processor import generate_mock_employee_data
-        
-        logger.info("Using mock Receipt processing fallback")
-        mock_employees = generate_mock_employee_data(45)
-        
-        employees = []
-        for emp in mock_employees:
-            employees.append({
-                "employee_id": emp["employee_id"],
-                "employee_name": emp["employee_name"],
-                "receipt_amount": emp["receipt_amount"],
-                "source": "mock_receipt_fallback",
-                "confidence": 1.0  # Mock data is always "confident"
-            })
-        
-        return employees
 
-
-class MockDocumentProcessor(DocumentProcessorInterface):
-    """
-    Mock document processor for development and testing
-    
-    Provides the same interface as Azure Document Intelligence but generates
-    realistic mock data for testing and development purposes.
-    """
-    
-    def __init__(self):
-        """Initialize mock document processor"""
-        logger.info("Mock Document Processor initialized for development use")
-    
-    async def process_car_document(self, file_path: str) -> List[Dict[str, Any]]:
-        """
-        Mock processing of CAR document
-        
-        Args:
-            file_path: Path to the CAR PDF file (not actually read)
-            
-        Returns:
-            List of mock employee records from CAR document
-        """
-        logger.info(f"Mock processing CAR document: {file_path}")
-        
-        # Simulate processing delay
-        await asyncio.sleep(0.5)
-        
-        # Use consistent seed for mock data to ensure same employees across CAR and Receipt
-        import random
-        original_state = random.getstate()
-        random.seed(42)  # Consistent seed for reproducible results
-        
-        try:
-            from .mock_processor import generate_mock_employee_data
-            mock_employees = generate_mock_employee_data(45)
-            
-            employees = []
-            for emp in mock_employees:
-                employees.append({
-                    "employee_id": emp["employee_id"],
-                    "employee_name": emp["employee_name"],
-                    "car_amount": emp["car_amount"],
-                    "department": emp.get("department", "Unknown"),
-                    "position": emp.get("position", "Unknown"),
-                    "source": "mock_car_document",
-                    "confidence": 1.0  # Mock data is always "confident"
-                })
-            
-            logger.info(f"Mock CAR processing completed: {len(employees)} employees")
-            return employees
-        finally:
-            random.setstate(original_state)  # Restore original random state
-    
-    async def process_receipt_document(self, file_path: str) -> List[Dict[str, Any]]:
-        """
-        Mock processing of Receipt document
-        
-        Args:
-            file_path: Path to the Receipt PDF file (not actually read)
-            
-        Returns:
-            List of mock employee records from Receipt document
-        """
-        logger.info(f"Mock processing Receipt document: {file_path}")
-        
-        # Simulate processing delay
-        await asyncio.sleep(0.5)
-        
-        # Use consistent seed for mock data to ensure same employees across CAR and Receipt
-        import random
-        original_state = random.getstate()
-        random.seed(42)  # Same seed as CAR document for consistent employee names
-        
-        try:
-            from .mock_processor import generate_mock_employee_data
-            mock_employees = generate_mock_employee_data(45)
-            
-            employees = []
-            for emp in mock_employees:
-                employees.append({
-                    "employee_id": emp["employee_id"],
-                    "employee_name": emp["employee_name"],
-                    "receipt_amount": emp["receipt_amount"],
-                    "source": "mock_receipt_document",
-                    "confidence": 1.0  # Mock data is always "confident"
-                })
-            
-            logger.info(f"Mock Receipt processing completed: {len(employees)} employees")
-            return employees
-        finally:
-            random.setstate(original_state)  # Restore original random state
-    
-    async def validate_document(self, file_path: str) -> Dict[str, Any]:
-        """
-        Mock document validation (always returns valid for existing files)
-        
-        Args:
-            file_path: Path to the document file
-            
-        Returns:
-            Mock validation result
-        """
-        if not os.path.exists(file_path):
-            return {
-                "valid": False,
-                "error": "File does not exist",
-                "details": f"File path: {file_path}"
-            }
-        
-        file_size = os.path.getsize(file_path)
-        
-        return {
-            "valid": True,
-            "file_size": file_size,
-            "file_type": "PDF",
-            "processor": "mock"
-        }
 
 
 class DocumentProcessor:
@@ -537,9 +594,8 @@ class DocumentProcessor:
             self._processor_type = "azure"
             logger.info("Document processor initialized with Azure Document Intelligence")
         else:
-            self._processor = MockDocumentProcessor()
-            self._processor_type = "mock"
-            logger.info("Document processor initialized with Mock processor for development")
+            logger.error("Azure Document Intelligence must be configured - no mock processing allowed")
+            raise ValueError("Azure Document Intelligence configuration required - mock processing disabled")
     
     @property
     def processor_type(self) -> str:

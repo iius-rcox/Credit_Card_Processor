@@ -101,9 +101,9 @@ for i in {1..30}; do
 done
 echo -e "${GREEN}✅ Backend is ready${NC}"
 
-echo "Starting frontend and nginx..."
-docker-compose -f docker-compose.production.yml up -d frontend nginx
-echo -e "${GREEN}✅ Frontend and nginx started${NC}"
+echo "Starting frontend..."
+docker-compose -f docker-compose.production.yml up -d frontend
+echo -e "${GREEN}✅ Frontend started${NC}"
 
 # Final health check
 echo -e "${YELLOW}🔍 Final Health Check${NC}"

@@ -13,7 +13,11 @@
       "Bash(docker logs:*)",
       "Bash(node:*)",
       "Bash(timeout:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(./deploy-production.sh)",
+      "Bash(docker exec:*)",
+      "Bash(winpty docker exec:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

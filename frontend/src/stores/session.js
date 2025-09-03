@@ -994,6 +994,7 @@ export const useSessionStore = defineStore('session', () => {
 
     uploadLoading.value = true
     status.value = 'uploading'
+    processError.value = null
 
     const fileArray = Array.from(files)
     const uploadPromises = fileArray.map(file => uploadSingleFile(file))
@@ -1010,6 +1011,7 @@ export const useSessionStore = defineStore('session', () => {
       } else {
         status.value = 'idle'
         error.value = null
+        processError.value = null
       }
 
       return results.map(result =>

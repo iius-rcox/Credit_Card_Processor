@@ -27,7 +27,7 @@ from ..schemas import (
     ProcessingStartRequest, ProcessingResponse, ProcessingControlResponse,
     ProcessingConfig, ErrorResponse
 )
-from ..services.document_intelligence import get_document_processor
+from ..services.document_intelligence import create_document_processor
 from ..services.mock_processor import simulate_document_processing, log_processing_activity, update_session_status
 from ..services.delta_aware_processor import (
     DeltaAwareProcessor, create_delta_processing_config, should_use_delta_processing
@@ -142,10 +142,10 @@ async def process_documents_with_intelligence(
             return False
         
         # Update session status
-        update_session_status(db, db_session, ModelSessionStatus.PROCESSING)
+        await update_session_status(db, session_id, SessionStatus.PROCESSING)
         
         # Log processing start
-        log_processing_activity(
+        await log_processing_activity(
             db, session_id, ActivityType.PROCESSING,
             "Real document processing started - analyzing PDF files with OCR",
             created_by="system"
@@ -160,39 +160,51 @@ async def process_documents_with_intelligence(
         receipt_employees = await processor.process_receipt_document(receipt_file.file_path)
         
         # Merge and validate employee data
+        logger.info(f"Starting merge of employee data - CAR: {len(car_employees)} employees, Receipt: {len(receipt_employees)} employees")
         all_employees = merge_employee_data(car_employees, receipt_employees)
+        logger.info(f"Successfully merged employee data - Total employees: {len(all_employees)}")
         
         # Save employee data to database
         total_employees = len(all_employees)
+        logger.info(f"Starting database operations for {total_employees} employees")
         processed_count = 0
         
         for i, employee_data in enumerate(all_employees):
+            logger.debug(f"Processing employee {i+1}/{total_employees}: {employee_data.get('employee_name', 'Unknown')}")
+            
             # Check for cancellation
             if processing_state.get("status") == "cancelled":
                 logger.info(f"Processing cancelled for session {session_id}")
                 return False
             
-            # Create employee revision
-            employee = EmployeeRevision(
-                session_id=session_uuid,
-                employee_id=employee_data.get('employee_id'),
-                employee_name=employee_data.get('employee_name'),
-                department=employee_data.get('department'),
-                position=employee_data.get('position'),
-                amount=employee_data.get('amount'),
-                validation_status=employee_data.get('validation_status', ValidationStatus.VALID),
-                extracted_data=employee_data
-            )
-            
-            db.add(employee)
-            processed_count += 1
+            try:
+                # Create employee revision
+                logger.debug(f"Creating EmployeeRevision object for employee {i+1}")
+                employee = EmployeeRevision(
+                    session_id=session_uuid,
+                    employee_id=employee_data.get('employee_id'),
+                    employee_name=employee_data.get('employee_name'),
+                    car_amount=employee_data.get('car_amount'),
+                    receipt_amount=employee_data.get('receipt_amount'),
+                    validation_status=employee_data.get('validation_status', ValidationStatus.VALID),
+                    validation_flags=employee_data.get('validation_flags', {})
+                )
+                
+                logger.debug(f"Adding employee {i+1} to database session")
+                db.add(employee)
+                processed_count += 1
+                logger.debug(f"Successfully processed employee {i+1}, total processed: {processed_count}")
+                
+            except Exception as emp_error:
+                logger.error(f"ERROR processing employee {i+1} ({employee_data.get('employee_name', 'Unknown')}): {type(emp_error).__name__}: {str(emp_error)}")
+                raise
             
             # Update progress
             percent_complete = int((processed_count / total_employees) * 100)
             
             # Log progress periodically
             if processed_count % 5 == 0 or processed_count == total_employees:
-                log_processing_activity(
+                await log_processing_activity(
                     db, session_id, ActivityType.PROCESSING,
                     f"Processing progress: {processed_count}/{total_employees} employees ({percent_complete}%)",
                     created_by="system"
@@ -202,29 +214,64 @@ async def process_documents_with_intelligence(
             await asyncio.sleep(0.1)
         
         # Update session totals
+        logger.info(f"Updating session totals - total: {total_employees}, processed: {processed_count}")
         db_session.total_employees = total_employees
         db_session.processed_employees = processed_count
+        logger.info(f"Successfully updated session totals")
         
         # Complete processing
-        update_session_status(db, db_session, ModelSessionStatus.COMPLETED)
+        logger.info(f"Attempting to update session status to COMPLETED for session {session_id}")
+        await update_session_status(db, session_id, SessionStatus.COMPLETED)
+        logger.info(f"Successfully updated session status to COMPLETED")
         
         # Log completion
+        logger.info(f"Calculating completion statistics for {processed_count} employees")
         issues_count = sum(1 for emp in all_employees if emp.get('validation_status') == ValidationStatus.NEEDS_ATTENTION)
-        log_processing_activity(
+        logger.info(f"Completion stats - processed: {processed_count}, issues: {issues_count}, valid: {processed_count - issues_count}")
+        
+        logger.info(f"Logging completion activity for session {session_id}")
+        await log_processing_activity(
             db, session_id, ActivityType.PROCESSING,
             f"Real document processing completed successfully - {processed_count} employees processed ({processed_count - issues_count} valid, {issues_count} with issues)",
             created_by="system"
         )
+        logger.info(f"Successfully logged completion activity")
         
+        logger.info(f"Committing database transaction for session {session_id}")
         db.commit()
+        logger.info(f"Successfully committed database transaction")
         logger.info(f"Real document processing completed successfully for session {session_id} - {processed_count} employees, {issues_count} issues detected")
         
         return True
         
     except Exception as e:
-        logger.error(f"Error in real document processing for session {session_id}: {str(e)}")
-        update_session_status(db, db_session, ModelSessionStatus.ERROR)
-        db.rollback()
+        import traceback
+        error_details = {
+            'session_id': session_id,
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'error_args': e.args,
+            'traceback': traceback.format_exc()
+        }
+        logger.error(f"DETAILED ERROR in real document processing for session {session_id}:")
+        logger.error(f"Error Type: {error_details['error_type']}")
+        logger.error(f"Error Message: {error_details['error_message']}")
+        logger.error(f"Error Args: {error_details['error_args']}")
+        logger.error(f"Full Traceback:\n{error_details['traceback']}")
+        
+        try:
+            await update_session_status(db, session_id, SessionStatus.FAILED)
+            logger.info(f"Successfully updated session status to FAILED for session {session_id}")
+        except Exception as status_error:
+            logger.error(f"FAILED to update session status: {type(status_error).__name__}: {str(status_error)}")
+            logger.error(f"Status update traceback:\n{traceback.format_exc()}")
+        
+        try:
+            db.rollback()
+            logger.info(f"Successfully rolled back database transaction for session {session_id}")
+        except Exception as rollback_error:
+            logger.error(f"FAILED to rollback database: {type(rollback_error).__name__}: {str(rollback_error)}")
+        
         return False
 
 
@@ -345,7 +392,7 @@ async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
             logger.info(f"Using real document processing for session {session_id}")
             
             # Get the document processor (Azure or fallback)
-            processor = get_document_processor()
+            processor = create_document_processor()
             
             # Execute real document processing
             success = await process_documents_with_intelligence(
