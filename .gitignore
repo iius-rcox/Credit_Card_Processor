@@ -44,5 +44,17 @@ coverage/
 tests/example-reports/
 backend/data/uploads/
 
+# Binary and executable files
+*.exe
+*.pkg
+*.zip
+
+# Large reports and documents
+*Report*.pdf
+
+# Historic and archive directories
+.claude/historic/
+test-archives/
+
 # Exposed credentials in production environment should not be committed
 .env.production
