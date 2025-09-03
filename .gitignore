@@ -42,7 +42,6 @@ coverage/
 
 # Example Reports - Contains test PDF files that should not be committed
 tests/example-reports/
-data/uploads/
 backend/data/uploads/
 
 # Exposed credentials in production environment should not be committed
