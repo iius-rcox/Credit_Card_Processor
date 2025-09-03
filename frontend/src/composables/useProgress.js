@@ -263,6 +263,16 @@ export function useProgress(options = {}) {
   }
 
   /**
+   * Clears error state without resetting other progress data
+   */
+  function clearError() {
+    error.value = null
+    if (status.value === 'error') {
+      status.value = 'idle'
+    }
+  }
+
+  /**
    * Resets progress state to initial values
    */
   function resetProgress() {
@@ -456,6 +466,7 @@ export function useProgress(options = {}) {
     updateProgress,
     fetchProgress,
     resetProgress,
+    clearError,
     
     // Performance
     pollingMetrics,

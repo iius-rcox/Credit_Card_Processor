@@ -616,11 +616,23 @@ watch(
   (newSessionId, oldSessionId) => {
     if (newSessionId !== oldSessionId) {
       progress.stopPolling()
+      progress.clearError() // Clear any previous errors when switching sessions
       if (newSessionId) {
         progress.fetchProgress(newSessionId).catch(error => {
           console.warn('Failed to fetch progress for new session:', error)
         })
       }
+    }
+  }
+)
+
+// Watch for file uploads and clear errors
+watch(
+  () => sessionStore.uploadedFiles.length,
+  (newCount, oldCount) => {
+    if (newCount > oldCount) {
+      // Files were uploaded, clear any previous errors
+      progress.clearError()
     }
   }
 )
