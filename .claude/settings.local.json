@@ -17,7 +17,10 @@
       "Bash(./deploy-production.sh)",
       "Bash(docker exec:*)",
       "Bash(winpty docker exec:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(find:*)",
+      "Bash(python -m pytest --version)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

@@ -7,7 +7,7 @@
           Upload Documents
         </h2>
         <p class="mt-2 text-sm text-gray-600" id="upload-section-description">
-          Upload both CAR and Receipt PDF files to begin processing. Maximum file sizes: CAR 100MB, Receipt 300GB.
+          Upload both CAR and Receipt PDF files to begin processing. Maximum file sizes: CAR 100MB, Receipt 300MB.
         </p>
       </div>
     </div>
@@ -202,7 +202,7 @@
                     : 'Upload Receipt PDF'
                 }}
               </p>
-              <p class="text-xs text-gray-400">Click to browse or drag and drop a PDF file (maximum 300GB)</p>
+              <p class="text-xs text-gray-400">Click to browse or drag and drop a PDF file (maximum 300MB)</p>
             </div>
 
             <!-- Selected File Display -->
@@ -591,7 +591,7 @@ const processingOptions = ref({
 
 // Constants
 const MAX_CAR_FILE_SIZE = 100 * 1024 * 1024 // 100MB for CAR files
-const MAX_RECEIPT_FILE_SIZE = 300 * 1024 * 1024 * 1024 // 300GB for Receipt files
+const MAX_RECEIPT_FILE_SIZE = 300 * 1024 * 1024 // 300MB for Receipt files
 const UPLOAD_TIMEOUT = 60 * 60 * 1000 // 1 hour for large files
 const CHUNK_UPLOAD_TIMEOUT = 10 * 60 * 1000 // 10 minutes per chunk for large files
 
@@ -827,7 +827,7 @@ function validateUploadedFile(file, fileType = 'car') {
     // Enhanced size validation based on file type
     const maxSize = fileType === 'receipt' ? MAX_RECEIPT_FILE_SIZE : MAX_CAR_FILE_SIZE
     if (file.size > maxSize) {
-      const maxSizeDisplay = fileType === 'receipt' ? '300GB' : '100MB'
+      const maxSizeDisplay = fileType === 'receipt' ? '300MB' : '100MB'
       return { 
         valid: false, 
         error: `File size exceeds ${maxSizeDisplay} limit`,
