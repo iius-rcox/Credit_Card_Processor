@@ -50,7 +50,8 @@ backend/data/uploads/
 *.zip
 
 # Large reports and documents
-*Report*.pdf
+*.pdf
+*metadata.json
 
 # Historic and archive directories
 .claude/historic/
