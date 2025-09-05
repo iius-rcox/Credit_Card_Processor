@@ -14,12 +14,16 @@
       <div class="summary-actions">
         <button
           v-if="showExpandToggle"
-          @click="expanded = !expanded"
+          @click="toggleExpanded"
+          @keydown.enter="toggleExpanded"
+          @keydown.space.prevent="toggleExpanded"
           class="expand-button"
           :class="{ 'expanded': expanded }"
           :aria-label="expanded ? 'Hide details' : 'Show details'"
+          :aria-expanded="expanded"
+          type="button"
         >
-          <span class="expand-text">{{ expanded ? 'Hide Details' : 'View Details' }}</span>
+          <span class="expand-text">{{ expandButtonText }}</span>
           <svg 
             class="expand-icon"
             :class="{ 'rotated': expanded }"
@@ -84,15 +88,47 @@
       </div>
     </div>
 
+    <!-- Preview Section (collapsed state) -->
+    <transition
+      name="preview-fade"
+      enter-active-class="transition-all duration-200 ease-out"
+      leave-active-class="transition-all duration-200 ease-in"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="showPreviewSection" class="preview-section">
+        <div class="preview-header">
+          <span class="preview-title">Quick Overview</span>
+          <span v-if="remainingMetricsCount > 0" class="preview-more">
+            +{{ remainingMetricsCount }} more details
+          </span>
+        </div>
+        <div class="preview-grid">
+          <div 
+            v-for="detail in previewMetrics" 
+            :key="`preview-${detail.key}`"
+            class="preview-item"
+          >
+            <span class="preview-label">{{ detail.label }}:</span>
+            <span class="preview-value" :class="`value-${detail.type || 'default'}`">
+              {{ formatMetricValue(detail.value) }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Expandable Details Section -->
     <transition
       name="expand"
-      enter-active-class="transition-all duration-300 ease-out"
-      leave-active-class="transition-all duration-300 ease-in"
-      enter-from-class="opacity-0 max-h-0"
-      enter-to-class="opacity-100 max-h-[500px]"
-      leave-from-class="opacity-100 max-h-[500px]"
-      leave-to-class="opacity-0 max-h-0"
+      :enter-active-class="`transition-all duration-${animationDuration} ease-out`"
+      :leave-active-class="`transition-all duration-${animationDuration} ease-in`"
+      enter-from-class="opacity-0 max-h-0 transform scale-y-0"
+      enter-to-class="opacity-100 max-h-[1000px] transform scale-y-100"
+      leave-from-class="opacity-100 max-h-[1000px] transform scale-y-100"
+      leave-to-class="opacity-0 max-h-0 transform scale-y-0"
     >
       <div v-if="expanded" class="details-section">
         <div class="details-grid">
@@ -118,7 +154,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, useSlots } from 'vue'
 
 // Props
 const props = defineProps({
@@ -158,6 +194,18 @@ const props = defineProps({
   defaultExpanded: {
     type: Boolean,
     default: false
+  },
+  showPreview: {
+    type: Boolean,
+    default: true
+  },
+  previewItems: {
+    type: Number,
+    default: 3
+  },
+  animationDuration: {
+    type: Number,
+    default: 300
   }
 })
 
@@ -166,10 +214,36 @@ const emit = defineEmits(['metric-click', 'action-click', 'expand-change'])
 
 // Reactive state
 const expanded = ref(props.defaultExpanded)
+const slots = useSlots()
 
 // Computed properties
 const showExpandToggle = computed(() => {
   return props.expandable && (props.detailMetrics.length > 0 || !!slots.details)
+})
+
+const previewMetrics = computed(() => {
+  if (!props.showPreview || expanded.value) {
+    return []
+  }
+  return props.detailMetrics.slice(0, props.previewItems)
+})
+
+const remainingMetricsCount = computed(() => {
+  return Math.max(0, props.detailMetrics.length - props.previewItems)
+})
+
+const showPreviewSection = computed(() => {
+  return props.showPreview && !expanded.value && previewMetrics.value.length > 0
+})
+
+const expandButtonText = computed(() => {
+  if (expanded.value) {
+    return 'Hide Details'
+  }
+  if (remainingMetricsCount.value > 0) {
+    return `View All ${props.detailMetrics.length} Details`
+  }
+  return 'View Details'
 })
 
 // Methods
@@ -218,6 +292,10 @@ const handleMetricClick = (metric) => {
 
 const handleActionClick = (action) => {
   emit('action-click', action)
+}
+
+const toggleExpanded = () => {
+  expanded.value = !expanded.value
 }
 
 // Watch for expand changes
@@ -470,6 +548,63 @@ const DocumentTextIcon = {
 
 .additional-details {
   @apply pt-4 border-t border-gray-200;
+}
+
+/* Preview Section Styles */
+.preview-section {
+  @apply border-t border-gray-100 px-6 py-4 bg-gradient-to-r from-gray-25 to-gray-50;
+}
+
+.preview-header {
+  @apply flex justify-between items-center mb-3;
+}
+
+.preview-title {
+  @apply text-sm font-semibold text-gray-700;
+}
+
+.preview-more {
+  @apply text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded-full;
+}
+
+.preview-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3;
+}
+
+.preview-item {
+  @apply flex justify-between items-center p-2 bg-white rounded-md border border-gray-100 hover:border-gray-200 transition-colors duration-150;
+}
+
+.preview-label {
+  @apply text-xs text-gray-500 font-medium;
+}
+
+.preview-value {
+  @apply text-xs font-bold;
+}
+
+/* Enhanced animations */
+.expand-enter-active,
+.expand-leave-active {
+  transform-origin: top;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  transform: scaleY(0);
+  opacity: 0;
+}
+
+.preview-fade-enter-active,
+.preview-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.preview-fade-enter-from,
+.preview-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 /* Mobile responsive adjustments */

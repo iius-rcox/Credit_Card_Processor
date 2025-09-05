@@ -278,10 +278,19 @@ watch(() => sessionStore.sessionId, (newSessionId) => {
   }
 })
 
+// Update summary when processing status changes or WebSocket provides updates
 watch(() => sessionStore.processingStatus, (newStatus) => {
   if (newStatus === 'completed') {
-    // Reload summary when processing completes
-    setTimeout(loadSummary, 1000)
+    // Reload summary when processing completes (with slight delay to ensure backend is updated)
+    setTimeout(loadSummary, 1500)
+  }
+})
+
+// Listen for real-time updates if WebSocket is enabled
+watch(() => sessionStore.realTimeEnabled, (enabled) => {
+  if (enabled && hasActiveSession.value) {
+    // Real-time updates are active, summary will be updated via WebSocket
+    console.log('ActionBar: Real-time updates enabled')
   }
 })
 

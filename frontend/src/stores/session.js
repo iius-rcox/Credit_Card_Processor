@@ -129,6 +129,12 @@ export const useSessionStore = defineStore('session', () => {
   /** @type {import('vue').Ref<'idle'|'uploading'|'processing'|'completed'|'error'>} Legacy processing status */
   const processingStatus = ref('idle')
 
+  // WebSocket State
+  /** @type {import('vue').Ref<boolean>} WebSocket real-time updates enabled */
+  const realTimeEnabled = ref(false)
+  /** @type {import('vue').Ref<Array>} Available exports from WebSocket notifications */
+  const availableExports = ref([])
+
   // Getters (Computed Properties)
 
   // Authentication Getters
@@ -641,6 +647,130 @@ export const useSessionStore = defineStore('session', () => {
       followup: { status: 'idle', progress: 0, error: null },
       issues: { status: 'idle', progress: 0, error: null },
     }
+  }
+
+  // WebSocket Support Methods
+  /**
+   * Update processing progress from WebSocket updates
+   * @param {Object} progressData - Progress data from WebSocket
+   */
+  function updateProcessingProgress(progressData) {
+    progress.value = progressData.percentage || 0
+    
+    // Update current session if available
+    if (currentSession.value) {
+      currentSession.value.processed_employees = progressData.current || 0
+      currentSession.value.total_employees = progressData.total || 0
+    }
+
+    // Add activity for major progress milestones
+    if (progressData.stage && progressData.stage !== activities.value[activities.value.length - 1]?.stage) {
+      addActivity(`Stage: ${progressData.stage}`, 'info')
+    }
+  }
+
+  /**
+   * Set session status from WebSocket updates
+   * @param {string} newStatus - New session status
+   */
+  function setSessionStatus(newStatus) {
+    status.value = newStatus
+    
+    if (currentSession.value) {
+      currentSession.value.status = newStatus
+    }
+
+    // Update legacy status for backward compatibility
+    processingStatus.value = legacyProcessingStatus.value
+  }
+
+  /**
+   * Add available export from WebSocket notification
+   * @param {Object} exportInfo - Export information
+   */
+  function addAvailableExport(exportInfo) {
+    const existing = availableExports.value.find(exp => exp.type === exportInfo.type)
+    
+    if (existing) {
+      // Update existing export
+      Object.assign(existing, exportInfo)
+    } else {
+      // Add new export
+      availableExports.value.push({
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        ...exportInfo
+      })
+    }
+
+    // Update export status
+    setExportStatus(exportInfo.type, 'completed', 100, null)
+  }
+
+  /**
+   * Enable real-time updates via WebSocket
+   */
+  function enableRealTime() {
+    realTimeEnabled.value = true
+    
+    // Stop polling since WebSocket will provide updates
+    stopStatusPolling()
+  }
+
+  /**
+   * Disable real-time updates (fallback to polling)
+   */
+  function disableRealTime() {
+    realTimeEnabled.value = false
+    
+    // Resume polling if needed
+    if (shouldPoll.value) {
+      startStatusPolling()
+    }
+  }
+
+  /**
+   * Handle session error from WebSocket
+   * @param {string} errorMessage - Error message
+   */
+  function setSessionError(errorMessage) {
+    sessionError.value = errorMessage
+    status.value = 'error'
+    processingStatus.value = 'error'
+    
+    // Stop polling on error
+    stopStatusPolling()
+    
+    addActivity(`Session Error: ${errorMessage}`, 'error')
+  }
+
+  /**
+   * Clear session error
+   */
+  function clearSessionError() {
+    sessionError.value = null
+    
+    // Clear general error if it matches session error
+    if (error.value === sessionError.value) {
+      error.value = null
+    }
+  }
+
+  /**
+   * Set authentication error
+   * @param {string} errorMessage - Auth error message
+   */
+  function setAuthError(errorMessage) {
+    authError.value = errorMessage
+    
+    addActivity(`Authentication Error: ${errorMessage}`, 'error')
+  }
+
+  /**
+   * Clear authentication error
+   */
+  function clearAuthError() {
+    authError.value = null
   }
 
   // Polling Actions
@@ -1650,5 +1780,20 @@ export const useSessionStore = defineStore('session', () => {
     addExportToHistory,
     clearExportHistory,
     resetExportStatus,
+
+    // WebSocket State
+    realTimeEnabled,
+    availableExports,
+
+    // WebSocket Actions
+    updateProcessingProgress,
+    setSessionStatus,
+    addAvailableExport,
+    enableRealTime,
+    disableRealTime,
+    setSessionError,
+    clearSessionError,
+    setAuthError,
+    clearAuthError,
   }
 })

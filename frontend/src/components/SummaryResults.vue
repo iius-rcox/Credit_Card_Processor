@@ -19,80 +19,24 @@
         <div class="exception-details">
           <h4 class="text-lg font-semibold text-gray-900 mb-4">Issues Requiring Attention</h4>
           
-          <!-- Issue Categories -->
+          <!-- Issue Categories using ExpandableEmployeeList -->
           <div class="issue-categories">
-            <div 
+            <ExpandableEmployeeList
               v-for="category in issueCategories" 
               :key="category.key"
-              class="issue-category"
-              :class="{ 'has-issues': category.count > 0 }"
-            >
-              <div class="category-header" @click="toggleCategory(category.key)">
-                <div class="category-info">
-                  <div class="category-icon" :class="`icon-${category.type}`">
-                    <component :is="getCategoryIcon(category.type)" class="w-5 h-5" />
-                  </div>
-                  <div class="category-content">
-                    <div class="category-name">{{ category.name }}</div>
-                    <div class="category-description">{{ category.description }}</div>
-                  </div>
-                </div>
-                <div class="category-count">
-                  <span class="count-badge" :class="`badge-${category.type}`">
-                    {{ category.count }}
-                  </span>
-                  <svg 
-                    class="expand-icon"
-                    :class="{ 'rotated': expandedCategories.includes(category.key) }"
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/>
-                  </svg>
-                </div>
-              </div>
-              
-              <!-- Expandable Employee List -->
-              <transition
-                name="slide-down"
-                enter-active-class="transition-all duration-300 ease-out"
-                leave-active-class="transition-all duration-300 ease-in"
-                enter-from-class="opacity-0 max-h-0"
-                enter-to-class="opacity-100 max-h-96"
-                leave-from-class="opacity-100 max-h-96"
-                leave-to-class="opacity-0 max-h-0"
-              >
-                <div v-if="expandedCategories.includes(category.key)" class="employee-list">
-                  <div 
-                    v-for="employee in category.employees.slice(0, 5)" 
-                    :key="employee.id"
-                    class="employee-item"
-                  >
-                    <div class="employee-info">
-                      <div class="employee-name">{{ employee.name }}</div>
-                      <div class="employee-issue">{{ employee.issue }}</div>
-                    </div>
-                    <button 
-                      class="resolve-btn"
-                      @click="handleResolveEmployee(employee)"
-                      :aria-label="`Resolve issues for ${employee.name}`"
-                    >
-                      Fix
-                    </button>
-                  </div>
-                  
-                  <div v-if="category.employees.length > 5" class="show-more">
-                    <button 
-                      class="show-more-btn"
-                      @click="handleShowAllIssues(category)"
-                    >
-                      View all {{ category.employees.length }} employees
-                    </button>
-                  </div>
-                </div>
-              </transition>
-            </div>
+              :category-name="category.name"
+              :description="category.description"
+              :employees="category.employees"
+              :issue-type="category.type"
+              :default-expanded="expandedCategories.includes(category.key)"
+              :items-per-page="5"
+              :enable-search="category.employees.length > 10"
+              :enable-bulk-actions="true"
+              @employee-resolve="handleResolveEmployee"
+              @quick-action="handleQuickAction"
+              @bulk-resolve="handleBulkResolve"
+              @expand-change="(expanded) => handleCategoryExpandChange(category.key, expanded)"
+            />
           </div>
         </div>
       </template>
@@ -131,10 +75,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import SummaryCard from './SummaryCard.vue'
+import ExpandableEmployeeList from './ExpandableEmployeeList.vue'
 import { useApi } from '../composables/useApi.js'
 import { useNotificationStore } from '../stores/notification.js'
+import { useSessionStore } from '../stores/session.js'
 
 // Props
 const props = defineProps({
@@ -169,6 +115,7 @@ const expandedCategories = ref([])
 // Services
 const api = useApi()
 const notificationStore = useNotificationStore()
+const sessionStore = useSessionStore()
 
 // Computed properties
 const summaryTitle = computed(() => {
@@ -306,35 +253,84 @@ const issueCategories = computed(() => {
   const breakdown = summary.value.issues_breakdown || {}
   
   if (breakdown.missing_receipts > 0) {
+    const employees = exceptions.value
+      .filter(emp => emp.issue_category === 'missing_receipts')
+      .map(emp => ({
+        ...emp,
+        severity: emp.severity || 'high',
+        details: [
+          { key: 'amount', label: 'Amount', value: emp.amount || 'N/A' },
+          { key: 'date', label: 'Date', value: emp.transaction_date || 'N/A' },
+          { key: 'vendor', label: 'Vendor', value: emp.vendor || 'N/A' }
+        ],
+        quickActions: [
+          { key: 'upload-receipt', label: 'Upload Receipt', type: 'upload' },
+          { key: 'mark-exempt', label: 'Mark Exempt', type: 'edit' }
+        ]
+      }))
+    
     categories.push({
       key: 'missing_receipts',
       name: 'Missing Receipts',
       description: 'Employees without receipt data',
       type: 'error',
       count: breakdown.missing_receipts,
-      employees: exceptions.value.filter(emp => emp.issue_category === 'missing_receipts')
+      employees
     })
   }
   
   if (breakdown.coding_incomplete > 0) {
+    const employees = exceptions.value
+      .filter(emp => emp.issue_category === 'coding_issues')
+      .map(emp => ({
+        ...emp,
+        severity: emp.severity || 'medium',
+        details: [
+          { key: 'category', label: 'Category', value: emp.expense_category || 'Unassigned' },
+          { key: 'amount', label: 'Amount', value: emp.amount || 'N/A' },
+          { key: 'suggested', label: 'Suggested', value: emp.suggested_category || 'N/A' }
+        ],
+        quickActions: [
+          { key: 'auto-code', label: 'Auto-Code', type: 'edit' },
+          { key: 'manual-code', label: 'Manual Code', type: 'edit' }
+        ]
+      }))
+    
     categories.push({
       key: 'coding_issues',
       name: 'Coding Issues',
       description: 'Incomplete expense coding',
       type: 'warning',
       count: breakdown.coding_incomplete,
-      employees: exceptions.value.filter(emp => emp.issue_category === 'coding_issues')
+      employees
     })
   }
   
   if (breakdown.data_mismatches > 0) {
+    const employees = exceptions.value
+      .filter(emp => emp.issue_category === 'data_mismatches')
+      .map(emp => ({
+        ...emp,
+        severity: emp.severity || 'high',
+        details: [
+          { key: 'car_amount', label: 'CAR Amount', value: emp.car_amount || 'N/A' },
+          { key: 'receipt_amount', label: 'Receipt Amount', value: emp.receipt_amount || 'N/A' },
+          { key: 'difference', label: 'Difference', value: emp.difference || 'N/A' }
+        ],
+        quickActions: [
+          { key: 'accept-car', label: 'Accept CAR', type: 'edit' },
+          { key: 'accept-receipt', label: 'Accept Receipt', type: 'edit' },
+          { key: 'manual-review', label: 'Manual Review', type: 'view' }
+        ]
+      }))
+    
     categories.push({
       key: 'data_mismatches',
       name: 'Data Mismatches',
       description: 'CAR vs Receipt discrepancies',
       type: 'error',
       count: breakdown.data_mismatches,
-      employees: exceptions.value.filter(emp => emp.issue_category === 'data_mismatches')
+      employees
     })
   }
   
@@ -447,12 +443,12 @@ const handleExpandChange = (expanded) => {
   }
 }
 
-const toggleCategory = (categoryKey) => {
+const handleCategoryExpandChange = (categoryKey, expanded) => {
   const index = expandedCategories.value.indexOf(categoryKey)
-  if (index > -1) {
-    expandedCategories.value.splice(index, 1)
-  } else {
+  if (expanded && index === -1) {
     expandedCategories.value.push(categoryKey)
+  } else if (!expanded && index > -1) {
+    expandedCategories.value.splice(index, 1)
   }
 }
 
@@ -468,8 +464,24 @@ const handleShowAllIssues = (category) => {
   })
 }
 
-const handleQuickAction = (action) => {
-  emit('bulk-action', action)
+const handleQuickAction = ({ employee, action }) => {
+  // Handle individual quick actions on employees
+  emit('bulk-action', { 
+    ...action, 
+    employees: [employee],
+    type: 'individual'
+  })
+}
+
+const handleBulkResolve = (employees) => {
+  // Handle bulk resolution of multiple employees
+  emit('bulk-action', {
+    key: 'bulk-resolve',
+    type: 'bulk',
+    employees: employees,
+    title: 'Bulk Resolve Issues',
+    description: `Resolve issues for ${employees.length} employees`
+  })
 }
 
 // Icon methods
@@ -495,17 +507,46 @@ const getActionIcon = (type) => {
 onMounted(() => {
   loadSummary()
   
-  // Set up auto-refresh
-  if (props.autoRefresh) {
-    const interval = setInterval(() => {
-      if (!loading.value) {
-        loadSummary()
-      }
-    }, props.refreshInterval)
-    
-    // Clean up interval on unmount
-    onUnmounted(() => clearInterval(interval))
+  // Set up auto-refresh only if real-time updates are not enabled
+  let refreshInterval = null
+  
+  const setupRefresh = () => {
+    // Only use polling if real-time updates are disabled and auto-refresh is enabled
+    if (props.autoRefresh && !sessionStore.realTimeEnabled) {
+      refreshInterval = setInterval(() => {
+        if (!loading.value && !sessionStore.realTimeEnabled) {
+          loadSummary()
+        }
+      }, props.refreshInterval)
+    }
   }
+  
+  // Set up initial refresh
+  setupRefresh()
+  
+  // Watch for real-time status changes
+  const stopRefreshWatcher = sessionStore.$subscribe((mutation, state) => {
+    if (mutation.events?.some(e => e.key === 'realTimeEnabled')) {
+      // Clear existing interval
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+        refreshInterval = null
+      }
+      
+      // Set up refresh based on new real-time status
+      setupRefresh()
+    }
+  })
+  
+  // Clean up on unmount
+  onUnmounted(() => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval)
+    }
+    if (stopRefreshWatcher) {
+      stopRefreshWatcher()
+    }
+  })
 })
 </script>
 
@@ -520,110 +561,6 @@ onMounted(() => {
 
 .issue-categories {
   @apply space-y-4;
-}
-
-.issue-category {
-  @apply border border-gray-200 rounded-lg overflow-hidden;
-}
-
-.issue-category.has-issues {
-  @apply border-yellow-300 bg-yellow-50;
-}
-
-.category-header {
-  @apply flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors duration-200;
-}
-
-.category-info {
-  @apply flex items-center gap-3;
-}
-
-.category-icon {
-  @apply flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center;
-}
-
-.icon-error {
-  @apply bg-red-100 text-red-600;
-}
-
-.icon-warning {
-  @apply bg-yellow-100 text-yellow-600;
-}
-
-.icon-success {
-  @apply bg-green-100 text-green-600;
-}
-
-.category-content {
-  @apply flex-1;
-}
-
-.category-name {
-  @apply font-semibold text-gray-900;
-}
-
-.category-description {
-  @apply text-sm text-gray-600;
-}
-
-.category-count {
-  @apply flex items-center gap-2;
-}
-
-.count-badge {
-  @apply px-2 py-1 text-sm font-bold rounded-full;
-}
-
-.badge-error {
-  @apply bg-red-500 text-white;
-}
-
-.badge-warning {
-  @apply bg-yellow-500 text-white;
-}
-
-.badge-success {
-  @apply bg-green-500 text-white;
-}
-
-.expand-icon {
-  @apply w-5 h-5 text-gray-400 transition-transform duration-200;
-}
-
-.expand-icon.rotated {
-  @apply rotate-180;
-}
-
-.employee-list {
-  @apply border-t border-gray-200 bg-white overflow-hidden;
-}
-
-.employee-item {
-  @apply flex items-center justify-between p-3 border-b border-gray-100 hover:bg-gray-50;
-}
-
-.employee-info {
-  @apply flex-1;
-}
-
-.employee-name {
-  @apply font-medium text-gray-900;
-}
-
-.employee-issue {
-  @apply text-sm text-gray-600;
-}
-
-.resolve-btn {
-  @apply px-3 py-1 text-sm font-medium text-blue-600 bg-blue-100 hover:bg-blue-200 rounded transition-colors duration-200;
-}
-
-.show-more {
-  @apply p-3 text-center border-t border-gray-200 bg-gray-50;
-}
-
-.show-more-btn {
-  @apply text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline;
 }
 
 .quick-actions-panel {

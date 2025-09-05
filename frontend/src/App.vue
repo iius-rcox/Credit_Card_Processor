@@ -218,6 +218,7 @@ import { useSessionStore } from './stores/session.js'
 import { useNotificationStore } from './stores/notification.js'
 import { useApi } from './composables/useApi.js'
 import { useProgress } from './composables/useProgress.js'
+import { useWebSocket } from './composables/useWebSocket.js'
 import AuthDisplay from './components/shared/AuthDisplay.vue'
 import SessionSetup from './components/core/SessionSetup.vue'
 import ErrorBoundary from './components/shared/ErrorBoundary.vue'
@@ -247,6 +248,7 @@ const sessionStore = useSessionStore()
 const notificationStore = useNotificationStore()
 const api = useApi()
 const progress = useProgress()
+const webSocket = useWebSocket()
 
 // Accessibility state
 const announcements = ref('')
@@ -263,20 +265,57 @@ onMounted(async () => {
   
   // Set up online/offline detection
   setupConnectionMonitoring()
+  
+  // Set up WebSocket event listeners
+  setupWebSocketEventHandlers()
 })
 
 /**
- * Watch for processing status changes and start progress polling automatically
+ * Watch for processing status changes and manage WebSocket/polling
  */
 watch(
   () => sessionStore.status,
   (newStatus, oldStatus) => {
     if (newStatus === 'processing' && oldStatus !== 'processing' && sessionStore.sessionId) {
-      console.log('Processing started, beginning progress polling...')
-      progress.startPolling(sessionStore.sessionId)
+      console.log('Processing started...')
+      
+      // If WebSocket is connected, use real-time updates, otherwise fallback to polling
+      if (webSocket.isConnected.value) {
+        sessionStore.enableRealTime()
+        console.log('Using WebSocket for real-time updates')
+      } else {
+        console.log('WebSocket not connected, using polling fallback')
+        progress.startPolling(sessionStore.sessionId)
+      }
     } else if (newStatus !== 'processing' && progress.isPolling) {
-      console.log('Processing ended, stopping progress polling...')
+      console.log('Processing ended, stopping progress monitoring...')
       progress.stopPolling()
+    }
+  }
+)
+
+/**
+ * Watch WebSocket connection status and manage polling fallback
+ */
+watch(
+  () => webSocket.isConnected.value,
+  (isConnected) => {
+    if (isConnected) {
+      console.log('WebSocket connected - enabling real-time updates')
+      sessionStore.enableRealTime()
+      
+      // Stop polling since WebSocket will provide updates
+      if (progress.isPolling) {
+        progress.stopPolling()
+      }
+    } else {
+      console.log('WebSocket disconnected - falling back to polling if needed')
+      sessionStore.disableRealTime()
+      
+      // Resume polling if processing is active
+      if (sessionStore.status === 'processing' && sessionStore.sessionId) {
+        progress.startPolling(sessionStore.sessionId)
+      }
     }
   }
 )
@@ -306,6 +345,46 @@ function setupConnectionMonitoring() {
     
     window.addEventListener('offline', () => {
       notificationStore.handleOffline()
+    })
+  }
+}
+
+/**
+ * Set up WebSocket event handlers
+ */
+function setupWebSocketEventHandlers() {
+  if (typeof window !== 'undefined') {
+    // Listen for processing completion events from WebSocket
+    window.addEventListener('processing-complete', (event) => {
+      const { summary } = event.detail
+      console.log('Processing completed via WebSocket:', summary)
+      
+      // Fetch updated results
+      if (sessionStore.sessionId) {
+        api.getResults(sessionStore.sessionId)
+          .then(results => {
+            sessionStore.setResults(results)
+            
+            // Show completion notification
+            notificationStore.addSuccess(
+              `Processing completed! ${summary.ready_for_pvault || 0} employees ready for export.`,
+              {
+                title: 'Processing Complete',
+                duration: 10000,
+                actions: [
+                  {
+                    label: 'Download Results',
+                    handler: () => handleDownloadResults({ hasFiles: true, fileCount: 2 })
+                  }
+                ]
+              }
+            )
+          })
+          .catch(error => {
+            console.error('Failed to fetch results after WebSocket completion:', error)
+            sessionStore.setError('Failed to fetch processing results')
+          })
+      }
     })
   }
 }
