@@ -18,6 +18,9 @@ prometheus_client>=0.20.0
 # HTTP client dependencies
 aiohttp>=3.9.0
 
+# PDF processing dependencies
+PyMuPDF>=1.23.0
+
 # Testing dependencies
 pytest>=7.0.0
 httpx>=0.25.0

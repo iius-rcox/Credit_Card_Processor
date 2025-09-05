@@ -81,6 +81,7 @@ class ActivityType(PyEnum):
     PROCESSING_COMPLETED = "processing_completed"
     PROCESSING_FAILED = "processing_failed"
     PROCESSING_CANCELLED = "processing_cancelled"
+    DOCUMENT_SPLIT = "document_split"
 
 
 class FileType(PyEnum):

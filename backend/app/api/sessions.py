@@ -5,10 +5,14 @@ Implements CRUD operations for processing sessions with proper authentication an
 
 import uuid
 import logging
+import os
+import zipfile
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from pathlib import Path
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, select
@@ -837,4 +841,477 @@ async def get_session_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve session status due to internal error"
+        )
+
+
+@router.get("/{session_id}/employee-analysis")
+async def get_employee_analysis(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Get advanced employee analysis and merge statistics for a session
+    
+    This endpoint provides detailed employee analysis including:
+    - Match statistics between CAR and Receipt data
+    - Employees suitable for document splitting
+    - Data validation report
+    - Expense category analysis
+    
+    Args:
+        session_id: UUID of the session to analyze
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with employee analysis results
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for analysis: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for analysis: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(
+                f"User {current_user.username} attempted to access employee analysis {session_id} without permission"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this session"
+            )
+        
+        # Get session file uploads
+        car_file = db.query(FileUpload).filter(
+            FileUpload.session_id == session_uuid,
+            FileUpload.file_type == FileType.CAR
+        ).first()
+        
+        receipt_file = db.query(FileUpload).filter(
+            FileUpload.session_id == session_uuid,
+            FileUpload.file_type == FileType.RECEIPT
+        ).first()
+        
+        if not car_file or not receipt_file:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session must have both CAR and Receipt files for analysis"
+            )
+        
+        # Process documents with local processors
+        from ..services.pdf_processor import CARProcessor, ReceiptProcessor
+        from ..services.employee_merger import EmployeeDataMerger
+        
+        logger.info(f"Starting employee analysis for session {session_id}")
+        
+        # Extract data from documents
+        car_processor = CARProcessor()
+        receipt_processor = ReceiptProcessor()
+        
+        car_data = car_processor.parse_car_document(car_file.file_path)
+        receipt_data = receipt_processor.parse_receipt_document(receipt_file.file_path)
+        
+        # Perform advanced merge analysis
+        merger = EmployeeDataMerger(similarity_threshold=0.8)
+        merge_result = merger.merge_employee_data(car_data, receipt_data)
+        
+        # Get splittable employees
+        splittable_employees = merger.get_splittable_employees(merge_result['employees'])
+        
+        # Validate data
+        validation_report = merger.validate_employee_data(merge_result['employees'])
+        
+        # Generate expense analysis
+        expense_analysis = _generate_expense_analysis(merge_result['employees'])
+        
+        logger.info(f"Employee analysis completed for session {session_id}")
+        
+        return {
+            "session_id": session_id,
+            "analysis_timestamp": datetime.now(timezone.utc),
+            "summary": merge_result['summary'],
+            "matches": [{
+                "car_employee": match['car_employee']['employee_name'],
+                "receipt_employee": match['receipt_employee']['employee_name'],
+                "match_score": match['match_score'],
+                "match_reason": match['match_reason']
+            } for match in merge_result['matches']],
+            "splittable_employees": [{
+                "employee_name": emp['employee_name'],
+                "employee_id": emp['employee_id'],
+                "total_expenses": emp['total_expenses'],
+                "car_pages": emp['car_pages'],
+                "receipt_pages": emp['receipt_pages'],
+                "expense_categories": emp['expense_categories']
+            } for emp in splittable_employees],
+            "validation": validation_report,
+            "expense_analysis": expense_analysis
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error performing employee analysis for session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to perform employee analysis"
+        )
+
+
+def _generate_expense_analysis(employees_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Generate expense category and amount analysis
+    """
+    category_totals = {}
+    total_car_expenses = 0
+    total_receipt_expenses = 0
+    high_expense_employees = []
+    
+    for emp_key, employee in employees_data.items():
+        total_car_expenses += employee['car_total']
+        total_receipt_expenses += employee['receipt_total']
+        
+        # Track high expense employees (over $2000)
+        if employee['total_expenses'] > 2000:
+            high_expense_employees.append({
+                'name': employee['employee_name'],
+                'total': employee['total_expenses']
+            })
+        
+        # Aggregate expense categories
+        for category in employee.get('expense_categories', []):
+            if category not in category_totals:
+                category_totals[category] = 0
+            category_totals[category] += employee['receipt_total']
+    
+    # Sort high expense employees
+    high_expense_employees.sort(key=lambda x: x['total'], reverse=True)
+    
+    return {
+        'total_car_expenses': round(total_car_expenses, 2),
+        'total_receipt_expenses': round(total_receipt_expenses, 2),
+        'total_combined_expenses': round(total_car_expenses + total_receipt_expenses, 2),
+        'category_breakdown': category_totals,
+        'high_expense_employees': high_expense_employees[:10],  # Top 10
+        'average_car_expense': round(total_car_expenses / len(employees_data), 2) if employees_data else 0,
+        'average_receipt_expense': round(total_receipt_expenses / len(employees_data), 2) if employees_data else 0
+    }
+
+
+@router.post("/{session_id}/split-documents")
+async def split_session_documents(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Split combined CAR and Receipt PDFs into individual employee documents
+    
+    This endpoint creates separate PDF files for each employee containing
+    their relevant pages from both CAR and Receipt documents.
+    
+    Args:
+        session_id: UUID of the session to split documents for
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with split operation results and file information
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for document split: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session with file uploads
+        db_session = db.query(ProcessingSession).options(
+            selectinload(ProcessingSession.file_uploads)
+        ).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for document split: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(f"User {current_user.id} denied access to session {session_id} for document split")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Import document splitter service
+        from ..services.document_splitter import create_document_splitter
+        from ..services.employee_merger import EmployeeDataMerger
+        from ..services.document_intelligence import DocumentProcessor
+        
+        # Find CAR and Receipt files
+        car_file = None
+        receipt_file = None
+        
+        for file_upload in db_session.file_uploads:
+            if file_upload.file_type == FileType.car:
+                car_file = file_upload
+            elif file_upload.file_type == FileType.receipt:
+                receipt_file = file_upload
+        
+        if not car_file or not receipt_file:
+            missing_types = []
+            if not car_file:
+                missing_types.append("CAR")
+            if not receipt_file:
+                missing_types.append("Receipt")
+            
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing required file types: {', '.join(missing_types)}"
+            )
+        
+        # Process documents to get employee data
+        logger.info(f"Processing documents for split operation in session {session_id}")
+        
+        doc_processor = DocumentProcessor(use_local=True)
+        
+        # Process CAR document
+        car_data = doc_processor.process_car_document(car_file.file_path)
+        
+        # Process Receipt document  
+        receipt_data = doc_processor.process_receipt_document(receipt_file.file_path)
+        
+        # Merge employee data
+        merger = EmployeeDataMerger()
+        merged_employees = merger.merge_employee_data(car_data, receipt_data)
+        
+        if not merged_employees:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No employee data found to split"
+            )
+        
+        # Validate split requirements
+        splitter = create_document_splitter()
+        validation_result = splitter.validate_split_requirements(merged_employees)
+        
+        if not validation_result['ready_for_split']:
+            logger.warning(f"Session {session_id} not ready for split: {validation_result['missing_data_count']} employees missing data")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Some employees are missing required data for splitting",
+                    "validation_details": validation_result
+                }
+            )
+        
+        # Perform document split
+        logger.info(f"Starting document split for session {session_id} with {len(merged_employees)} employees")
+        
+        split_results = splitter.split_employee_documents(
+            car_pdf_path=car_file.file_path,
+            receipt_pdf_path=receipt_file.file_path,
+            merged_employee_data=merged_employees,
+            session_id=str(session_uuid)
+        )
+        
+        # Generate summary statistics
+        summary = splitter.get_split_summary(split_results)
+        
+        # Update session status if all documents were split successfully
+        if split_results['error_count'] == 0:
+            db_session.status = ModelSessionStatus.completed
+            db_session.updated_at = datetime.now(timezone.utc)
+            
+            # Log successful split activity
+            activity = ProcessingActivity(
+                session_id=session_uuid,
+                user_id=current_user.id,
+                activity_type=ActivityType.DOCUMENT_SPLIT,
+                description=f"Successfully split documents for {split_results['success_count']} employees",
+                metadata={
+                    'split_summary': summary,
+                    'success_count': split_results['success_count']
+                }
+            )
+            db.add(activity)
+        
+        db.commit()
+        
+        logger.info(f"Document split completed for session {session_id}: {split_results['success_count']} successful, {split_results['error_count']} errors")
+        
+        return {
+            'session_id': session_id,
+            'split_results': split_results,
+            'summary': summary,
+            'validation': validation_result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to split documents for session {session_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Document split operation failed: {str(e)}"
+        )
+
+
+@router.get("/{session_id}/split-validation")
+async def validate_split_requirements(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Validate if a session is ready for document splitting
+    
+    This endpoint checks if the session has the required employee data
+    and page ranges needed for successful document splitting.
+    
+    Args:
+        session_id: UUID of the session to validate
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with validation results and requirements
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for split validation: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session with file uploads
+        db_session = db.query(ProcessingSession).options(
+            selectinload(ProcessingSession.file_uploads)
+        ).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for split validation: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(f"User {current_user.id} denied access to session {session_id} for split validation")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Import required services
+        from ..services.document_splitter import create_document_splitter
+        from ..services.employee_merger import EmployeeDataMerger
+        from ..services.document_intelligence import DocumentProcessor
+        
+        # Find CAR and Receipt files
+        car_file = None
+        receipt_file = None
+        
+        for file_upload in db_session.file_uploads:
+            if file_upload.file_type == FileType.car:
+                car_file = file_upload
+            elif file_upload.file_type == FileType.receipt:
+                receipt_file = file_upload
+        
+        file_validation = {
+            'has_car_file': car_file is not None,
+            'has_receipt_file': receipt_file is not None,
+            'car_file_path': car_file.file_path if car_file else None,
+            'receipt_file_path': receipt_file.file_path if receipt_file else None
+        }
+        
+        if not car_file or not receipt_file:
+            return {
+                'session_id': session_id,
+                'ready_for_split': False,
+                'file_validation': file_validation,
+                'missing_files': [ft for ft in ['CAR', 'Receipt'] if (ft == 'CAR' and not car_file) or (ft == 'Receipt' and not receipt_file)],
+                'employee_validation': None
+            }
+        
+        # Process documents to get employee data
+        logger.info(f"Validating split requirements for session {session_id}")
+        
+        doc_processor = DocumentProcessor(use_local=True)
+        
+        try:
+            # Process CAR document
+            car_data = doc_processor.process_car_document(car_file.file_path)
+            
+            # Process Receipt document  
+            receipt_data = doc_processor.process_receipt_document(receipt_file.file_path)
+            
+            # Merge employee data
+            merger = EmployeeDataMerger()
+            merged_employees = merger.merge_employee_data(car_data, receipt_data)
+            
+            # Validate split requirements
+            splitter = create_document_splitter()
+            validation_result = splitter.validate_split_requirements(merged_employees)
+            
+            return {
+                'session_id': session_id,
+                'ready_for_split': validation_result['ready_for_split'],
+                'file_validation': file_validation,
+                'employee_validation': validation_result,
+                'total_employees': len(merged_employees)
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to process documents for split validation in session {session_id}: {str(e)}")
+            return {
+                'session_id': session_id,
+                'ready_for_split': False,
+                'file_validation': file_validation,
+                'processing_error': str(e),
+                'employee_validation': None
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to validate split requirements for session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Split validation failed: {str(e)}"
         )

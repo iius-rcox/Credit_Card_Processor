@@ -20,7 +20,10 @@
       "Bash(npm run build:*)",
       "Bash(find:*)",
       "Bash(python -m pytest --version)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(docker system prune:*)",
+      "WebSearch",
+      "Bash(pdftotext:*)"
     ],
     "deny": [],
     "ask": []

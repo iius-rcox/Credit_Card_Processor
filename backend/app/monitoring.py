@@ -197,7 +197,7 @@ class HealthChecker:
             start_time = time.time()
             
             # Test basic connectivity
-            async with engine.connect() as conn:
+            async with engine.begin() as conn:
                 result = await conn.execute(text("SELECT 1"))
                 result.fetchone()
             
