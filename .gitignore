@@ -40,6 +40,17 @@ coverage/
 *.swp
 *.swo
 
+# Temporary and debug files
+debug-*.png
+debug-*.js
+test-*.png
+test-*.js
+*-debug-error.*
+*-error.png
+final-state.png
+before-processing.png
+no-start-button.png
+
 # Example Reports - Contains test PDF files that should not be committed
 tests/example-reports/
 backend/data/uploads/

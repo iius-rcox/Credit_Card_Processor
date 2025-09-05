@@ -1315,3 +1315,526 @@ async def validate_split_requirements(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Split validation failed: {str(e)}"
         )
+
+
+@router.get("/{session_id}/split-files")
+async def list_split_files(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    List all split document files for a session
+    
+    This endpoint returns information about all individual employee PDF files
+    that have been created for this session.
+    
+    Args:
+        session_id: UUID of the session to list files for
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with file listing and metadata
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for file listing: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for file listing: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(f"User {current_user.id} denied access to session {session_id} for file listing")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Check for split documents directory
+        from ..services.document_splitter import create_document_splitter
+        splitter = create_document_splitter()
+        
+        session_output_dir = splitter.output_dir / str(session_uuid)
+        
+        if not session_output_dir.exists():
+            return {
+                'session_id': session_id,
+                'files': [],
+                'total_files': 0,
+                'total_size_bytes': 0,
+                'directory_exists': False
+            }
+        
+        # List PDF files in the directory
+        files = []
+        total_size = 0
+        
+        for pdf_file in session_output_dir.glob("*.pdf"):
+            try:
+                stat_info = pdf_file.stat()
+                files.append({
+                    'filename': pdf_file.name,
+                    'file_path': str(pdf_file),
+                    'size_bytes': stat_info.st_size,
+                    'size_mb': round(stat_info.st_size / (1024 * 1024), 2),
+                    'created_at': datetime.fromtimestamp(stat_info.st_ctime).isoformat(),
+                    'modified_at': datetime.fromtimestamp(stat_info.st_mtime).isoformat()
+                })
+                total_size += stat_info.st_size
+            except Exception as e:
+                logger.warning(f"Failed to get info for file {pdf_file}: {str(e)}")
+                continue
+        
+        # Sort by filename
+        files.sort(key=lambda x: x['filename'])
+        
+        return {
+            'session_id': session_id,
+            'files': files,
+            'total_files': len(files),
+            'total_size_bytes': total_size,
+            'total_size_mb': round(total_size / (1024 * 1024), 2),
+            'directory_exists': True,
+            'directory_path': str(session_output_dir)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list split files for session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"File listing failed: {str(e)}"
+        )
+
+
+@router.get("/{session_id}/split-files/{filename}")
+async def download_split_file(
+    session_id: str,
+    filename: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Download an individual split document file
+    
+    This endpoint provides direct download access to individual employee PDF files.
+    
+    Args:
+        session_id: UUID of the session
+        filename: Name of the PDF file to download
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        FileResponse with the requested PDF file
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for file download: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for file download: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(f"User {current_user.id} denied access to session {session_id} for file download")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Validate filename (security check)
+        if not filename.endswith('.pdf') or '..' in filename or '/' in filename or '\\' in filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename"
+            )
+        
+        # Locate the file
+        from ..services.document_splitter import create_document_splitter
+        splitter = create_document_splitter()
+        
+        session_output_dir = splitter.output_dir / str(session_uuid)
+        file_path = session_output_dir / filename
+        
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        # Log download activity
+        activity = ProcessingActivity(
+            session_id=session_uuid,
+            user_id=current_user.id,
+            activity_type=ActivityType.EXPORT,
+            description=f"Downloaded split document: {filename}",
+            metadata={
+                'filename': filename,
+                'file_size': file_path.stat().st_size
+            }
+        )
+        db.add(activity)
+        db.commit()
+        
+        logger.info(f"User {current_user.id} downloading file {filename} from session {session_id}")
+        
+        return FileResponse(
+            path=str(file_path),
+            media_type='application/pdf',
+            filename=filename,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download file {filename} for session {session_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"File download failed: {str(e)}"
+        )
+
+
+@router.get("/{session_id}/split-files-zip")
+async def download_all_split_files(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Download all split document files as a ZIP archive
+    
+    This endpoint creates and streams a ZIP file containing all individual
+    employee PDF files for the session.
+    
+    Args:
+        session_id: UUID of the session
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        StreamingResponse with ZIP file containing all PDFs
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for ZIP download: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for ZIP download: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(f"User {current_user.id} denied access to session {session_id} for ZIP download")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Locate the split files directory
+        from ..services.document_splitter import create_document_splitter
+        splitter = create_document_splitter()
+        
+        session_output_dir = splitter.output_dir / str(session_uuid)
+        
+        if not session_output_dir.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No split documents found for this session"
+            )
+        
+        # Find PDF files
+        pdf_files = list(session_output_dir.glob("*.pdf"))
+        
+        if not pdf_files:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No PDF files found in split documents"
+            )
+        
+        # Generate ZIP filename with session info
+        session_name = db_session.name or f"session_{session_id[:8]}"
+        zip_filename = f"{session_name}_split_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        
+        def generate_zip():
+            """Generator function to create ZIP file on-the-fly"""
+            import io
+            
+            # Create in-memory buffer for ZIP
+            zip_buffer = io.BytesIO()
+            
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as zip_file:
+                for pdf_file in pdf_files:
+                    try:
+                        # Add file to ZIP with just the filename (no directory structure)
+                        zip_file.write(pdf_file, pdf_file.name)
+                        logger.debug(f"Added {pdf_file.name} to ZIP archive")
+                    except Exception as e:
+                        logger.warning(f"Failed to add {pdf_file.name} to ZIP: {str(e)}")
+                        continue
+            
+            zip_buffer.seek(0)
+            
+            # Read and yield the ZIP data in chunks
+            while True:
+                chunk = zip_buffer.read(8192)  # 8KB chunks
+                if not chunk:
+                    break
+                yield chunk
+        
+        # Log bulk download activity
+        activity = ProcessingActivity(
+            session_id=session_uuid,
+            user_id=current_user.id,
+            activity_type=ActivityType.EXPORT,
+            description=f"Downloaded all split documents as ZIP ({len(pdf_files)} files)",
+            metadata={
+                'zip_filename': zip_filename,
+                'file_count': len(pdf_files),
+                'total_size_estimate': sum(f.stat().st_size for f in pdf_files)
+            }
+        )
+        db.add(activity)
+        db.commit()
+        
+        logger.info(f"User {current_user.id} downloading ZIP of {len(pdf_files)} split files from session {session_id}")
+        
+        return StreamingResponse(
+            generate_zip(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={zip_filename}"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create ZIP download for session {session_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ZIP download failed: {str(e)}"
+        )
+
+
+@router.delete("/{session_id}/split-files")
+async def cleanup_session_files(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Clean up all split document files for a session
+    
+    This endpoint permanently deletes all individual employee PDF files
+    for the specified session.
+    
+    Args:
+        session_id: UUID of the session to clean up
+        db: Database session
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with cleanup results
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for cleanup: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for cleanup: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(f"User {current_user.id} denied access to session {session_id} for cleanup")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Perform cleanup
+        from ..services.file_cleanup import create_file_cleanup_service
+        cleanup_service = create_file_cleanup_service()
+        
+        cleanup_result = cleanup_service.cleanup_session_files(db, str(session_uuid))
+        
+        # Log cleanup activity
+        if cleanup_result['success']:
+            activity = ProcessingActivity(
+                session_id=session_uuid,
+                user_id=current_user.id,
+                activity_type=ActivityType.PROCESSING,
+                description=f"Manual cleanup: deleted {cleanup_result['files_deleted']} split document files ({round(cleanup_result['bytes_freed'] / (1024*1024), 2)} MB)",
+                metadata=cleanup_result
+            )
+            db.add(activity)
+            db.commit()
+        
+        logger.info(f"User {current_user.id} cleaned up split files for session {session_id}: {cleanup_result}")
+        
+        return {
+            'session_id': session_id,
+            'cleanup_result': cleanup_result,
+            'message': f"Successfully deleted {cleanup_result['files_deleted']} files, freed {round(cleanup_result['bytes_freed'] / (1024*1024), 2)} MB"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cleanup files for session {session_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"File cleanup failed: {str(e)}"
+        )
+
+
+@router.get("/split-files/storage-stats")
+async def get_storage_stats(
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Get storage statistics for all split document files
+    
+    This endpoint provides information about disk usage and file counts
+    across all sessions.
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with storage statistics
+    """
+    try:
+        from ..services.file_cleanup import create_file_cleanup_service
+        cleanup_service = create_file_cleanup_service()
+        
+        stats = cleanup_service.get_storage_stats()
+        
+        logger.debug(f"User {current_user.id} requested storage statistics")
+        
+        return {
+            'storage_stats': stats,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get storage statistics: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve storage statistics: {str(e)}"
+        )
+
+
+@router.post("/split-files/cleanup-expired")
+async def cleanup_expired_files(
+    retention_days: int = Query(30, ge=1, le=365, description="Number of days to retain files"),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Clean up expired split document files across all sessions
+    
+    This endpoint removes split document files that are older than the
+    specified retention period.
+    
+    Args:
+        retention_days: Number of days to retain files (1-365)
+        current_user: Current authenticated user
+        db: Database session
+        
+    Returns:
+        Dictionary with cleanup results
+    """
+    try:
+        from ..services.file_cleanup import create_file_cleanup_service
+        cleanup_service = create_file_cleanup_service()
+        
+        logger.info(f"User {current_user.id} initiated cleanup of files older than {retention_days} days")
+        
+        cleanup_result = cleanup_service.cleanup_expired_files(db, retention_days)
+        
+        return {
+            'cleanup_result': cleanup_result,
+            'retention_days': retention_days,
+            'timestamp': datetime.now().isoformat(),
+            'message': f"Cleanup completed: {cleanup_result['files_deleted']} files deleted, {round(cleanup_result['bytes_freed'] / (1024*1024), 2)} MB freed from {cleanup_result['sessions_processed']} sessions"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired files: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Expired file cleanup failed: {str(e)}"
+        )
