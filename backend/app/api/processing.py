@@ -32,6 +32,8 @@ from ..services.mock_processor import simulate_document_processing, log_processi
 from ..services.delta_aware_processor import (
     DeltaAwareProcessor, create_delta_processing_config, should_use_delta_processing
 )
+from ..websocket import notifier
+from ..services.auto_export_service import trigger_auto_exports
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -144,6 +146,9 @@ async def process_documents_with_intelligence(
         # Update session status
         await update_session_status(db, session_id, SessionStatus.PROCESSING)
         
+        # Notify WebSocket clients that processing started
+        await notifier.notify_processing_started(session_id, processing_config)
+        
         # Log processing start
         await log_processing_activity(
             db, session_id, ActivityType.PROCESSING,
@@ -202,6 +207,11 @@ async def process_documents_with_intelligence(
             # Update progress
             percent_complete = int((processed_count / total_employees) * 100)
             
+            # Send WebSocket progress update
+            await notifier.notify_processing_progress(
+                session_id, processed_count, total_employees, "processing"
+            )
+            
             # Log progress periodically
             if processed_count % 5 == 0 or processed_count == total_employees:
                 await log_processing_activity(
@@ -242,6 +252,24 @@ async def process_documents_with_intelligence(
         logger.info(f"Successfully committed database transaction")
         logger.info(f"Real document processing completed successfully for session {session_id} - {processed_count} employees, {issues_count} issues detected")
         
+        # Notify WebSocket clients of completion
+        await notifier.notify_processing_completed(session_id, {
+            "total_employees": processed_count,
+            "valid_employees": processed_count - issues_count,
+            "issues_count": issues_count,
+            "processing_time": f"{(time.time() - processing_state.get('start_time', time.time())):.1f}s"
+        })
+        
+        # Trigger automatic exports
+        try:
+            logger.info(f"Starting auto-export generation for session {session_id}")
+            export_results = await trigger_auto_exports(session_id, notify_clients=True)
+            logger.info(f"Auto-export completed for session {session_id}: "
+                       f"{len(export_results.get('exports_generated', []))} files generated")
+        except Exception as export_error:
+            logger.error(f"Auto-export failed for session {session_id}: {str(export_error)}")
+            # Don't fail the processing if export fails
+        
         return True
         
     except Exception as e:
@@ -262,6 +290,9 @@ async def process_documents_with_intelligence(
         try:
             await update_session_status(db, session_id, SessionStatus.FAILED)
             logger.info(f"Successfully updated session status to FAILED for session {session_id}")
+            
+            # Notify WebSocket clients of failure
+            await notifier.notify_processing_failed(session_id, str(e))
         except Exception as status_error:
             logger.error(f"FAILED to update session status: {type(status_error).__name__}: {str(status_error)}")
             logger.error(f"Status update traceback:\n{traceback.format_exc()}")
@@ -578,6 +609,9 @@ async def start_processing(
                 config_dict,
                 db_url
             )
+            
+            # Notify WebSocket clients that processing was requested
+            await notifier.notify_processing_started(session_id, config_dict)
             
             logger.info(
                 f"Background processing started - Session: {session_id}, "

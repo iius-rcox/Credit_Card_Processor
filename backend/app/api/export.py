@@ -41,6 +41,7 @@ from ..models import (
 )
 from ..services.export_generator import ExportGenerator, create_export_generator
 from pydantic import BaseModel, Field
+from pathlib import Path as PathLib
 
 
 # Response models for exports
@@ -711,3 +712,164 @@ async def export_enhanced_issues_report(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export generation failed: {str(e)}")
+
+
+@router.get("/download/{session_id}/pvault/{filename}")
+async def download_auto_pvault_csv(
+    session_id: str = Path(..., description="Session UUID"),
+    filename: str = Path(..., description="Auto-generated filename"),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Download auto-generated pVault CSV file
+    
+    This endpoint serves auto-generated pVault CSV files that were created
+    automatically after processing completion for employees ready for export.
+    """
+    try:
+        # Validate session exists and user has access
+        from uuid import UUID
+        session_uuid = UUID(session_id)
+        
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions (same as other endpoints)
+        if not current_user.is_admin:
+            session_creator = db_session.created_by.lower()
+            if "\" in session_creator:
+                session_creator = session_creator.split("\")[1]
+            
+            if session_creator != current_user.username.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+        
+        # Validate filename to prevent path traversal
+        safe_filename = PathLib(filename).name
+        if safe_filename != filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename"
+            )
+        
+        # Construct file path (this should be configurable in production)
+        file_path = PathLib(f"/tmp/{safe_filename}")
+        
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found or expired"
+            )
+        
+        # Log download activity
+        _log_export_activity(db, session_id, "pVault CSV Download", filename, current_user.username)
+        
+        # Return file
+        return StreamingResponse(
+            open(file_path, "rb"),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={safe_filename}",
+                "Content-Length": str(file_path.stat().st_size)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download pVault CSV {filename}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Download failed"
+        )
+
+
+@router.get("/download/{session_id}/exceptions/{filename}")
+async def download_auto_exception_report(
+    session_id: str = Path(..., description="Session UUID"),
+    filename: str = Path(..., description="Auto-generated filename"),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Download auto-generated exception report
+    
+    This endpoint serves auto-generated exception reports that list employees
+    needing attention with categorized issues and recommended actions.
+    """
+    try:
+        # Validate session exists and user has access
+        from uuid import UUID
+        session_uuid = UUID(session_id)
+        
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not current_user.is_admin:
+            session_creator = db_session.created_by.lower()
+            if "\" in session_creator:
+                session_creator = session_creator.split("\")[1]
+            
+            if session_creator != current_user.username.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+        
+        # Validate filename
+        safe_filename = PathLib(filename).name
+        if safe_filename != filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename"
+            )
+        
+        # Construct file path
+        file_path = PathLib(f"/tmp/{safe_filename}")
+        
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found or expired"
+            )
+        
+        # Log download activity
+        _log_export_activity(db, session_id, "Exception Report Download", filename, current_user.username)
+        
+        # Return file
+        return StreamingResponse(
+            open(file_path, "rb"),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={safe_filename}",
+                "Content-Length": str(file_path.stat().st_size)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download exception report {filename}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Download failed"
+        )
+

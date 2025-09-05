@@ -28,6 +28,7 @@ from .api.processing import router as processing_router
 from .api.results import router as results_router
 from .api.export import router as export_router
 from .api.delta import router as delta_router
+from .websocket import websocket_endpoint
 from .cache import get_cache_stats
 from .database import engine
 from .monitoring import (
@@ -201,6 +202,9 @@ app.include_router(processing_router)
 app.include_router(results_router)
 app.include_router(export_router)
 app.include_router(delta_router)
+
+# WebSocket endpoint
+app.websocket("/ws/{session_id}")(websocket_endpoint)
 
 # Add security middleware with proper configuration for testing and development
 # Note: TrustedHostMiddleware can cause issues with TestClient and should be configured carefully

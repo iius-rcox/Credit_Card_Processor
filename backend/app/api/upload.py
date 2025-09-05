@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,6 +35,7 @@ from ..database import get_db
 from ..auth import get_current_user, UserInfo
 from ..models import ProcessingSession, FileUpload, FileType, UploadStatus, SessionStatus, ProcessingActivity, ActivityType
 from ..config import settings
+from ..websocket import notifier
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -326,16 +327,20 @@ async def upload_files_to_session(
     session_id: str,
     car_file: UploadFile = File(..., description="CAR file (PDF, max 100MB)"),
     receipt_file: UploadFile = File(..., description="Receipt file (PDF, max 300GB)"),
+    auto_process: bool = True,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user)
 ):
     """
-    Upload CAR and Receipt files to a processing session
+    Upload CAR and Receipt files to a processing session with optional auto-processing
     
     Args:
         session_id: UUID of the target session
         car_file: CAR PDF file
         receipt_file: Receipt PDF file
+        auto_process: Whether to automatically start processing after upload (default: True)
+        background_tasks: FastAPI background tasks
         db: Database session
         current_user: Current authenticated user
         
@@ -537,13 +542,60 @@ async def upload_files_to_session(
             f"User: {current_user.username}, Files: {len(uploaded_files)}"
         )
         
+        # Auto-processing logic
+        response_status = "pending"
+        response_message = "Files uploaded successfully"
+        
+        if auto_process:
+            try:
+                # Import here to avoid circular imports
+                from .processing import process_session
+                
+                # Default processing configuration for auto-processing
+                config_dict = {
+                    "employee_count": 45,
+                    "processing_delay": 1.0,
+                    "auto_processing": True
+                }
+                
+                # Update session processing options
+                db_session.processing_options = config_dict
+                db.commit()
+                
+                # Get database URL for background task
+                db_url = str(db.get_bind().url)
+                
+                # Start background processing
+                background_tasks.add_task(
+                    process_session,
+                    session_id,
+                    config_dict,
+                    db_url
+                )
+                
+                # Notify WebSocket clients
+                await notifier.notify_processing_started(session_id, config_dict)
+                
+                response_status = "processing"
+                response_message = "Files uploaded successfully and processing started automatically"
+                
+                logger.info(
+                    f"Auto-processing started for session {session_id} after file upload"
+                )
+                
+            except Exception as e:
+                logger.error(f"Failed to start auto-processing for session {session_id}: {str(e)}")
+                # Don't fail the upload if auto-processing fails
+                response_message = "Files uploaded successfully, but auto-processing failed to start. You can manually start processing."
+        
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
                 "session_id": session_id,
                 "uploaded_files": uploaded_files,
-                "session_status": "pending",
-                "message": "Files uploaded successfully"
+                "session_status": response_status,
+                "auto_processing": auto_process,
+                "message": response_message
             }
         )
         

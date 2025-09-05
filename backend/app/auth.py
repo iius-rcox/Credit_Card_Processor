@@ -15,7 +15,7 @@ import re
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, Request, Depends, status
+from fastapi import HTTPException, Request, Depends, status, WebSocket
 from pydantic import BaseModel
 
 from .config import settings
@@ -408,3 +408,85 @@ SECURITY_HEADERS = {
         "frame-ancestors 'none';"
     )
 }
+
+
+async def get_current_user_ws(websocket: WebSocket) -> UserInfo:
+    """
+    WebSocket authentication dependency
+    
+    Extracts and validates user from WebSocket headers for authentication.
+    Similar to get_current_user but adapted for WebSocket connections.
+    
+    Args:
+        websocket: WebSocket connection with headers
+        
+    Returns:
+        UserInfo: Authenticated user information
+        
+    Raises:
+        WebSocketException: If authentication fails
+        
+    Security:
+        - Uses same authentication logic as HTTP requests
+        - Validates Windows authentication headers
+        - Supports development fallback
+    """
+    try:
+        # Extract headers from WebSocket
+        headers = dict(websocket.headers)
+        
+        # Try to extract username from various header sources
+        username = None
+        auth_method = "unknown"
+        
+        # Check Windows authentication headers (same order as HTTP auth)
+        auth_headers = [
+            ('remote-user', 'windows'),
+            ('http-remote-user', 'windows'),
+            ('x-forwarded-user', 'proxy'),
+            ('auth-user', 'basic'),
+        ]
+        
+        for header_name, method in auth_headers:
+            header_value = headers.get(header_name)
+            if header_value:
+                username = header_value
+                auth_method = method
+                break
+        
+        # Development fallback (same as HTTP auth)
+        if not username and settings.debug:
+            username = headers.get('x-dev-user', 'dev_user')
+            auth_method = 'development'
+        
+        if not username:
+            # Close WebSocket with authentication error
+            await websocket.close(code=4001, reason="Authentication required")
+            raise AuthenticationError("No authentication credentials provided")
+        
+        # Sanitize username
+        clean_username = sanitize_username(username)
+        if not clean_username:
+            await websocket.close(code=4001, reason="Invalid username format")
+            raise AuthenticationError("Invalid username format")
+        
+        # Check if user is admin (same logic as HTTP auth)
+        is_admin = clean_username.lower() in settings.admin_users
+        
+        # Log authentication attempt
+        log_authentication_attempt(clean_username, "websocket", True, auth_method)
+        
+        return UserInfo(
+            username=clean_username,
+            is_admin=is_admin,
+            is_authenticated=True,
+            auth_method=auth_method,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+    except AuthenticationError:
+        raise
+    except Exception as e:
+        auth_logger.error(f"WebSocket authentication error: {str(e)}")
+        await websocket.close(code=4000, reason="Authentication failed")
+        raise AuthenticationError("Authentication failed")

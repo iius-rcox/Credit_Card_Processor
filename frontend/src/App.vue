@@ -125,13 +125,22 @@
 
         <!-- Results Section -->
         <div v-if="sessionStore.hasResults">
-          <ResultsDisplay :session-id="sessionStore.sessionId" />
+          <SummaryResults 
+            :session-id="sessionStore.sessionId"
+            @employee-resolve="handleEmployeeResolve"
+            @bulk-action="handleBulkAction"
+            @view-all-issues="handleViewAllIssues"
+            @export-ready="handleExportReady"
+          />
         </div>
 
         <!-- Export Section -->
         <div v-if="sessionStore.canExport">
           <ExportActions />
         </div>
+        
+        <!-- Spacer for fixed action bar -->
+        <div v-if="sessionStore.hasSession" class="action-bar-spacer"></div>
 
         <!-- Error Display -->
         <div v-if="sessionStore.hasError" class="notification error">
@@ -179,6 +188,15 @@
       </footer>
     </div>
 
+    <!-- Action Bar -->
+    <ActionBar
+      :processing-progress="progress.percentage || 0"
+      :available-downloads="getAvailableDownloads()"
+      @process-new="handleProcessNew"
+      @download-results="handleDownloadResults"
+      @upload-updates="handleUploadUpdates"
+    />
+
     <!-- Global Notification Container -->
     <NotificationContainer />
 
@@ -215,8 +233,14 @@ const ProgressTracker = defineAsyncComponent(
 const ResultsDisplay = defineAsyncComponent(
   () => import('./components/ResultsDisplay.vue')
 )
+const SummaryResults = defineAsyncComponent(
+  () => import('./components/SummaryResults.vue')
+)
 const ExportActions = defineAsyncComponent(
   () => import('./components/ExportActions.vue')
+)
+const ActionBar = defineAsyncComponent(
+  () => import('./components/ActionBar.vue')
 )
 
 const sessionStore = useSessionStore()
@@ -484,10 +508,254 @@ watch(
     }
   }
 )
+
+/**
+ * Get available downloads count
+ */
+function getAvailableDownloads() {
+  // This would be populated by checking available exports
+  // For now, return a placeholder value
+  if (sessionStore.hasResults && sessionStore.canExport) {
+    return 2 // pVault CSV + Exception Report
+  }
+  return 0
+}
+
+/**
+ * Handle process new action from ActionBar
+ */
+function handleProcessNew(event) {
+  const { action } = event
+  
+  switch (action) {
+    case 'create-session':
+      // Clear current session to show SessionSetup
+      sessionStore.clearSession()
+      progress.stopPolling()
+      break
+      
+    case 'upload-files':
+      // Focus on file upload area or show upload modal
+      // This could scroll to FileUpload component or trigger a modal
+      announcements.value = 'Please upload both CAR and Receipt files to proceed'
+      break
+      
+    case 'start-processing':
+      // Start processing the uploaded files
+      if (sessionStore.sessionId && sessionStore.hasFiles) {
+        startProcessing()
+      }
+      break
+      
+    default:
+      console.warn('Unknown process action:', action)
+  }
+}
+
+/**
+ * Handle download results action from ActionBar
+ */
+function handleDownloadResults(event) {
+  const { hasFiles, fileCount } = event
+  
+  if (hasFiles && fileCount > 0) {
+    // Trigger download of available files
+    notificationStore.addInfo(`${fileCount} files available for download`, {
+      title: 'Downloads Ready',
+      actions: [
+        {
+          label: 'Download pVault CSV',
+          handler: () => downloadPvaultCSV()
+        },
+        {
+          label: 'Download Exception Report', 
+          handler: () => downloadExceptionReport()
+        }
+      ]
+    })
+  } else {
+    // No files available yet, show generation options
+    notificationStore.addInfo('Generating export files...', {
+      title: 'Preparing Downloads'
+    })
+  }
+}
+
+/**
+ * Handle upload updates action from ActionBar
+ */
+function handleUploadUpdates(event) {
+  const { baseSessionId, sessionName } = event
+  
+  // This would trigger delta processing workflow
+  notificationStore.addInfo(
+    `Upload updated receipts for session: ${sessionName}`,
+    {
+      title: 'Delta Processing',
+      actions: [
+        {
+          label: 'Start Delta Upload',
+          handler: () => {
+            // Implementation would create new delta session
+            announcements.value = 'Delta processing feature will allow you to upload updated receipts'
+          }
+        }
+      ]
+    }
+  )
+}
+
+/**
+ * Start processing current session
+ */
+async function startProcessing() {
+  try {
+    const response = await api.startProcessing(sessionStore.sessionId)
+    
+    if (response.status === 'processing') {
+      sessionStore.setProcessingStatus('processing')
+      progress.startPolling(sessionStore.sessionId)
+      
+      notificationStore.addSuccess('Processing started successfully', {
+        title: 'Processing Started'
+      })
+    }
+  } catch (error) {
+    console.error('Failed to start processing:', error)
+    notificationStore.addError('Failed to start processing', {
+      title: 'Processing Error'
+    })
+  }
+}
+
+/**
+ * Download pVault CSV
+ */
+async function downloadPvaultCSV() {
+  try {
+    const blob = await api.exportPvaultCSV(sessionStore.sessionId)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `pvault_${sessionStore.sessionId.slice(0, 8)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    notificationStore.addSuccess('pVault CSV downloaded successfully')
+  } catch (error) {
+    console.error('Failed to download pVault CSV:', error)
+    notificationStore.addError('Failed to download pVault CSV')
+  }
+}
+
+/**
+ * Download exception report
+ */
+async function downloadExceptionReport() {
+  try {
+    const blob = await api.exportExceptionReport(sessionStore.sessionId)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `exceptions_${sessionStore.sessionId.slice(0, 8)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    notificationStore.addSuccess('Exception report downloaded successfully')
+  } catch (error) {
+    console.error('Failed to download exception report:', error)
+    notificationStore.addError('Failed to download exception report')
+  }
+}
+
+/**
+ * Handle employee resolution from SummaryResults
+ */
+function handleEmployeeResolve(employee) {
+  // This would open a resolution modal or navigate to employee detail
+  notificationStore.addInfo(`Resolving issues for ${employee.name}`, {
+    title: 'Employee Resolution',
+    actions: [
+      {
+        label: 'Open Resolution Dialog',
+        handler: () => {
+          announcements.value = `Opening resolution dialog for ${employee.name}`
+        }
+      }
+    ]
+  })
+}
+
+/**
+ * Handle bulk actions from SummaryResults
+ */
+function handleBulkAction(action) {
+  switch (action.key) {
+    case 'bulk-upload-receipts':
+      notificationStore.addInfo('Bulk receipt upload feature coming soon', {
+        title: 'Bulk Upload'
+      })
+      break
+    case 'auto-code-expenses':
+      notificationStore.addInfo('Auto-coding feature will apply standard codes', {
+        title: 'Auto Code Expenses'
+      })
+      break
+    case 'resolve-mismatches':
+      notificationStore.addInfo('Opening mismatch resolution wizard', {
+        title: 'Resolve Mismatches'
+      })
+      break
+    default:
+      console.log('Bulk action:', action)
+  }
+}
+
+/**
+ * Handle view all issues from SummaryResults
+ */
+function handleViewAllIssues(options) {
+  switch (options.type) {
+    case 'category':
+      notificationStore.addInfo(`Viewing all ${options.category} issues`, {
+        title: 'Issue Details'
+      })
+      break
+    case 'all':
+      notificationStore.addInfo('Viewing all employee issues', {
+        title: 'All Issues'
+      })
+      break
+    default:
+      console.log('View issues:', options)
+  }
+}
+
+/**
+ * Handle export ready from SummaryResults
+ */
+function handleExportReady(options) {
+  if (options.type === 'pvault') {
+    downloadPvaultCSV()
+  } else {
+    // Show available exports
+    handleDownloadResults({ hasFiles: true, fileCount: 2 })
+  }
+}
 </script>
 
 <style scoped>
 .card {
   @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+}
+
+.action-bar-spacer {
+  height: 8rem; /* Space for the fixed action bar */
+}
+
+@media (max-width: 768px) {
+  .action-bar-spacer {
+    height: 12rem; /* More space on mobile where buttons stack */
+  }
 }
 </style>

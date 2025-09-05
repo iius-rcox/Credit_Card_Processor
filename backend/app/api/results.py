@@ -163,6 +163,327 @@ def _get_employee_delta_info(employee: EmployeeRevision, session: ProcessingSess
     return {"delta_change": None, "delta_previous_values": None}
 
 
+@router.get("/{session_id}/exceptions", response_model=SessionResultsResponse)
+async def get_session_exceptions(
+    session_id: str = Path(..., description="Session UUID"),
+    issue_type: Optional[str] = Query(None, description="Filter by issue type (missing_receipts, coding_issues, data_mismatches)"),
+    sort_by: str = Query("employee_name", description="Sort field"),
+    sort_order: str = Query("asc", description="Sort order (asc/desc)"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum results to return"),
+    offset: int = Query(0, ge=0, description="Results offset for pagination"),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Get only employees that need attention (exception-based filtering)
+    
+    This endpoint returns only employees with issues that require attention,
+    implementing the exception-based approach where users only see problems
+    that need to be resolved.
+    
+    Returns employees with:
+    - Missing receipt data (receipt_amount <= 0 or None)
+    - Incomplete coding (validation flags indicate coding issues)
+    - Data mismatches (CAR vs Receipt amount discrepancies)
+    - Other validation failures
+    """
+    try:
+        # Validate session UUID
+        from uuid import UUID
+        session_uuid = UUID(session_id)
+        
+        # Get session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check access permissions
+        if not current_user.is_admin:
+            session_creator = db_session.created_by.lower()
+            if '\\' in session_creator:
+                session_creator = session_creator.split('\\')[1]
+            
+            if session_creator != current_user.username.lower():
+                raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Build query for employees with issues only
+        employees_query = db.query(EmployeeRevision).filter(
+            EmployeeRevision.session_id == session_uuid
+        )
+        
+        # Filter for problematic employees only
+        problem_conditions = []
+        
+        if issue_type == "missing_receipts":
+            # Only employees with missing or zero receipt amounts
+            problem_conditions.append(
+                or_(
+                    EmployeeRevision.receipt_amount.is_(None),
+                    EmployeeRevision.receipt_amount <= 0
+                )
+            )
+        elif issue_type == "coding_issues":
+            # Only employees with coding validation issues
+            problem_conditions.append(
+                and_(
+                    EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+                    EmployeeRevision.validation_flags.op('->')('coding_incomplete').astext.cast(db.Boolean).is_(True)
+                )
+            )
+        elif issue_type == "data_mismatches":
+            # Only employees with amount mismatches
+            problem_conditions.append(
+                and_(
+                    EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+                    EmployeeRevision.validation_flags.op('->')('amount_mismatch').astext.cast(db.Boolean).is_(True)
+                )
+            )
+        else:
+            # All problematic employees (default exception filter)
+            problem_conditions.append(
+                or_(
+                    # Missing receipts
+                    EmployeeRevision.receipt_amount.is_(None),
+                    EmployeeRevision.receipt_amount <= 0,
+                    # Validation issues
+                    EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+                    # Other validation failures
+                    EmployeeRevision.validation_status == ValidationStatus.FAILED
+                )
+            )
+        
+        employees_query = employees_query.filter(or_(*problem_conditions))
+        
+        # Apply sorting
+        sort_column = getattr(EmployeeRevision, sort_by, EmployeeRevision.employee_name)
+        if sort_order.lower() == "desc":
+            employees_query = employees_query.order_by(desc(sort_column))
+        else:
+            employees_query = employees_query.order_by(asc(sort_column))
+        
+        # Get total count before pagination
+        total_count = employees_query.count()
+        
+        # Apply pagination
+        employees = employees_query.offset(offset).limit(limit).all()
+        
+        # Convert to response format with issue categorization
+        employees_data = []
+        for emp in employees:
+            emp_data = EmployeeResultsResponse(
+                revision_id=str(emp.revision_id),
+                employee_id=emp.employee_id,
+                employee_name=emp.employee_name or "Unknown",
+                car_amount=float(emp.car_amount) if emp.car_amount else None,
+                receipt_amount=float(emp.receipt_amount) if emp.receipt_amount else None,
+                validation_status=emp.validation_status.value,
+                validation_flags=emp.validation_flags or {},
+                resolved_by=emp.resolved_by,
+                resolution_notes=emp.resolution_notes,
+                created_at=emp.created_at,
+                updated_at=emp.updated_at
+            )
+            
+            # Add issue categorization
+            emp_data.validation_flags["issue_category"] = _categorize_employee_issues(emp)
+            emp_data.validation_flags["required_action"] = _get_required_action(emp)
+            
+            employees_data.append(emp_data)
+        
+        # Calculate summary statistics focused on issues
+        issue_stats = _calculate_issue_statistics(db, session_uuid)
+        
+        return SessionResultsResponse(
+            session_id=session_id,
+            session_name=db_session.session_name,
+            session_status=db_session.status.value,
+            employees=employees_data,
+            total_count=total_count,
+            returned_count=len(employees_data),
+            summary_statistics=issue_stats,
+            processing_metadata={
+                "last_updated": db_session.updated_at.isoformat() if db_session.updated_at else None,
+                "processing_completed": db_session.status == SessionStatus.COMPLETED,
+                "filter_applied": "exceptions_only",
+                "issue_type_filter": issue_type or "all_issues"
+            }
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid session ID: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve exceptions: {str(e)}")
+
+
+@router.get("/{session_id}/summary", response_model=Dict[str, Any])
+async def get_session_summary(
+    session_id: str = Path(..., description="Session UUID"),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Get session summary with problem-focused metrics
+    
+    Returns a concise summary showing:
+    - Total employees processed
+    - Ready for pVault export count
+    - Issues requiring attention count
+    - Categorized issue breakdown
+    """
+    try:
+        # Validate session UUID
+        from uuid import UUID
+        session_uuid = UUID(session_id)
+        
+        # Get session
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check access permissions
+        if not current_user.is_admin:
+            session_creator = db_session.created_by.lower()
+            if '\\' in session_creator:
+                session_creator = session_creator.split('\\')[1]
+            
+            if session_creator != current_user.username.lower():
+                raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Calculate comprehensive statistics
+        stats = _calculate_comprehensive_statistics(db, session_uuid)
+        
+        # Add session metadata
+        stats.update({
+            "session_id": session_id,
+            "session_name": db_session.session_name,
+            "session_status": db_session.status.value,
+            "processing_completed": db_session.status == SessionStatus.COMPLETED,
+            "last_updated": db_session.updated_at.isoformat() if db_session.updated_at else None,
+            "created_at": db_session.created_at.isoformat() if db_session.created_at else None
+        })
+        
+        return stats
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid session ID: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
+
+
+def _categorize_employee_issues(emp: EmployeeRevision) -> str:
+    """Categorize the primary issue for an employee"""
+    if not emp.receipt_amount or emp.receipt_amount <= 0:
+        return "missing_receipts"
+    
+    if emp.validation_status == ValidationStatus.NEEDS_ATTENTION:
+        flags = emp.validation_flags or {}
+        if flags.get("coding_incomplete"):
+            return "coding_issues"
+        if flags.get("amount_mismatch"):
+            return "data_mismatches"
+    
+    return "validation_errors"
+
+
+def _get_required_action(emp: EmployeeRevision) -> str:
+    """Get the required action for resolving an employee's issues"""
+    issue_category = _categorize_employee_issues(emp)
+    
+    action_map = {
+        "missing_receipts": "Upload missing receipts",
+        "coding_issues": "Complete expense category coding",
+        "data_mismatches": "Review and correct amount discrepancies",
+        "validation_errors": "Review employee data for accuracy"
+    }
+    
+    return action_map.get(issue_category, "Review and resolve validation issues")
+
+
+def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStats:
+    """Calculate statistics focused on issues and exceptions"""
+    total_employees = db.query(EmployeeRevision).filter(
+        EmployeeRevision.session_id == session_uuid
+    ).count()
+    
+    # Ready for export (no issues)
+    ready_query = db.query(EmployeeRevision).filter(
+        and_(
+            EmployeeRevision.session_id == session_uuid,
+            EmployeeRevision.receipt_amount > 0,
+            EmployeeRevision.validation_status == ValidationStatus.VALID
+        )
+    )
+    ready_count = ready_query.count()
+    
+    # Issues breakdown
+    missing_receipts = db.query(EmployeeRevision).filter(
+        and_(
+            EmployeeRevision.session_id == session_uuid,
+            or_(
+                EmployeeRevision.receipt_amount.is_(None),
+                EmployeeRevision.receipt_amount <= 0
+            )
+        )
+    ).count()
+    
+    coding_issues = db.query(EmployeeRevision).filter(
+        and_(
+            EmployeeRevision.session_id == session_uuid,
+            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+            EmployeeRevision.validation_flags.op('->')('coding_incomplete').astext.cast(db.Boolean).is_(True)
+        )
+    ).count()
+    
+    data_mismatches = db.query(EmployeeRevision).filter(
+        and_(
+            EmployeeRevision.session_id == session_uuid,
+            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+            EmployeeRevision.validation_flags.op('->')('amount_mismatch').astext.cast(db.Boolean).is_(True)
+        )
+    ).count()
+    
+    issues_count = total_employees - ready_count
+    
+    return SessionSummaryStats(
+        total_employees=total_employees,
+        ready_for_export=ready_count,
+        need_attention=issues_count,
+        missing_receipts=missing_receipts,
+        coding_incomplete=coding_issues,
+        data_mismatches=data_mismatches,
+        processing_time="N/A",  # This would be calculated from session metadata
+        export_ready_percentage=round((ready_count / total_employees) * 100, 1) if total_employees > 0 else 0.0
+    )
+
+
+def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, Any]:
+    """Calculate comprehensive statistics for session summary"""
+    issue_stats = _calculate_issue_statistics(db, session_uuid)
+    
+    return {
+        "total_employees": issue_stats.total_employees,
+        "ready_for_pvault": issue_stats.ready_for_export,
+        "need_attention": issue_stats.need_attention,
+        "issues_breakdown": {
+            "missing_receipts": issue_stats.missing_receipts,
+            "coding_incomplete": issue_stats.coding_incomplete,
+            "data_mismatches": issue_stats.data_mismatches
+        },
+        "export_readiness": {
+            "percentage": issue_stats.export_ready_percentage,
+            "ready_count": issue_stats.ready_for_export,
+            "total_count": issue_stats.total_employees
+        },
+        "status_message": f"{issue_stats.ready_for_export} ready for pVault | {issue_stats.need_attention} need attention"
+    }
+
+
 @router.get("/{session_id}/results", response_model=SessionResultsResponse)
 async def get_session_results(
     session_id: str = Path(..., description="Session UUID"),

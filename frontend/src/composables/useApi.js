@@ -504,6 +504,115 @@ export function useApi() {
   }
 
   /**
+   * Export auto-generated pVault CSV file
+   * @param {string} sessionId - Session UUID
+   * @returns {Promise<Blob>} CSV blob for download
+   */
+  async function exportPvaultCSV(sessionId) {
+    const response = await request(`/export/download/${sessionId}/pvault/pvault_${sessionId.slice(0, 8)}.csv`, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/csv',
+        ...getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        errorData.detail || `pVault CSV export failed: ${response.statusText}`
+      )
+    }
+
+    return await response.blob()
+  }
+
+  /**
+   * Export auto-generated exception report
+   * @param {string} sessionId - Session UUID  
+   * @returns {Promise<Blob>} CSV blob for download
+   */
+  async function exportExceptionReport(sessionId) {
+    const response = await request(`/export/download/${sessionId}/exceptions/exceptions_${sessionId.slice(0, 8)}.csv`, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/csv',
+        ...getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        errorData.detail || `Exception report export failed: ${response.statusText}`
+      )
+    }
+
+    return await response.blob()
+  }
+
+  /**
+   * Get session summary with problem-focused metrics
+   * @param {string} sessionId - Session UUID
+   * @returns {Promise<Object>} Session summary data
+   */
+  async function getSummary(sessionId) {
+    const response = await request(`/sessions/${sessionId}/summary`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        errorData.detail || `Failed to load summary: ${response.statusText}`
+      )
+    }
+
+    return await response.json()
+  }
+
+  /**
+   * Get employees with issues (exception-based filtering)
+   * @param {string} sessionId - Session UUID
+   * @param {Object} options - Query options
+   * @returns {Promise<Object>} Exception data with employees needing attention
+   */
+  async function getExceptions(sessionId, options = {}) {
+    const params = new URLSearchParams()
+    
+    if (options.issueType) {
+      params.append('issue_type', options.issueType)
+    }
+    if (options.limit) {
+      params.append('limit', options.limit)
+    }
+    if (options.offset) {
+      params.append('offset', options.offset)
+    }
+
+    const queryString = params.toString() ? `?${params.toString()}` : ''
+    
+    const response = await request(`/sessions/${sessionId}/exceptions${queryString}`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        errorData.detail || `Failed to load exceptions: ${response.statusText}`
+      )
+    }
+
+    return await response.json()
+  }
+
+  /**
    * Request interceptor for authentication and common headers
    * @param {RequestInit} options - Original request options
    * @returns {RequestInit} Enhanced request options
@@ -665,6 +774,12 @@ export function useApi() {
     exportPVault,
     exportFollowup,
     exportIssues,
+    exportPvaultCSV,
+    exportExceptionReport,
+    
+    // Summary and Exception Functions
+    getSummary,
+    getExceptions,
     
     // Utility Functions
     getAuthHeaders,
