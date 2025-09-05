@@ -57,5 +57,12 @@ backend/data/uploads/
 .claude/historic/
 test-archives/
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+database.db
+backups/
+
 # Exposed credentials in production environment should not be committed
 .env.production
