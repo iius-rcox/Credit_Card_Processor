@@ -1,11 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// Define routes - these can be expanded later
+// Define routes - simplified for the new architecture
 const routes = [
   {
     path: '/',
     name: 'Home',
-    component: () => import('../components/core/SessionSetup.vue')
+    component: () => import('../App.vue')
   }
 ]
 

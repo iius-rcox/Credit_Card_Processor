@@ -85,7 +85,8 @@ test.describe('API Connectivity and Backend Integration', () => {
       await page.request.get('http://localhost:8001/health', { timeout: 1 });
     } catch (error) {
       // Expected to timeout with very short timeout
-      expect(error.message).toContain('timeout');
+      // The exact error message can vary, so check for timeout-related keywords
+      expect(error.message.toLowerCase()).toMatch(/timeout|exceeded|timed out/);
     }
     
     // Verify the app remains stable after network issues

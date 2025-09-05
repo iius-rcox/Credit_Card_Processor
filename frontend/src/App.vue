@@ -1,6 +1,6 @@
 <template>
   <ErrorBoundary>
-    <div id="app" class="min-h-screen bg-neutral-50">
+    <div class="app-container min-h-screen bg-neutral-50">
       <!-- Skip Navigation Link -->
       <a 
         href="#main-content" 
@@ -52,12 +52,23 @@
     <!-- Main Content -->
     <main id="main-content" class="container-responsive main-content" role="main">
       <div class="content-section">
-        <!-- Session Setup (when no active session) -->
+        <!-- File Upload Section (simplified workflow) -->
         <div v-if="!sessionStore.hasSession">
-          <SessionSetup 
-            @session-created="handleSessionCreated"
-            @session-resumed="handleSessionResumed"
-          />
+          <!-- Auto-create session for simplified workflow -->
+          <div class="p-6 text-center">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Upload Credit Card Files</h2>
+            <p class="text-gray-600 mb-6">Upload your CAR and Receipt files to begin processing</p>
+            
+            <!-- Start New Session Button -->
+            <button
+              @click="handleNewSession"
+              class="btn-primary btn-responsive touch-friendly mb-4"
+              aria-label="Start a new processing session"
+              :disabled="sessionStore.isProcessing"
+            >
+              Start New Session
+            </button>
+          </div>
         </div>
 
         <!-- Active Session Content -->
@@ -139,8 +150,6 @@
           <ExportActions />
         </div>
         
-        <!-- Spacer for fixed action bar -->
-        <div v-if="sessionStore.hasSession" class="action-bar-spacer"></div>
 
         <!-- Error Display -->
         <div v-if="sessionStore.hasError" class="notification error">
@@ -188,14 +197,6 @@
       </footer>
     </div>
 
-    <!-- Action Bar -->
-    <ActionBar
-      :processing-progress="progress.percentage || 0"
-      :available-downloads="getAvailableDownloads()"
-      @process-new="handleProcessNew"
-      @download-results="handleDownloadResults"
-      @upload-updates="handleUploadUpdates"
-    />
 
     <!-- Global Notification Container -->
     <NotificationContainer />
@@ -220,7 +221,6 @@ import { useApi } from './composables/useApi.js'
 import { useProgress } from './composables/useProgress.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import AuthDisplay from './components/shared/AuthDisplay.vue'
-import SessionSetup from './components/core/SessionSetup.vue'
 import ErrorBoundary from './components/shared/ErrorBoundary.vue'
 import NotificationContainer from './components/shared/NotificationContainer.vue'
 
@@ -239,9 +239,6 @@ const SummaryResults = defineAsyncComponent(
 )
 const ExportActions = defineAsyncComponent(
   () => import('./components/ExportActions.vue')
-)
-const ActionBar = defineAsyncComponent(
-  () => import('./components/ActionBar.vue')
 )
 
 const sessionStore = useSessionStore()
@@ -374,7 +371,7 @@ function setupWebSocketEventHandlers() {
                 actions: [
                   {
                     label: 'Download Results',
-                    handler: () => handleDownloadResults({ hasFiles: true, fileCount: 2 })
+                    handler: () => downloadPvaultCSV()
                   }
                 ]
               }
@@ -504,42 +501,68 @@ function handleAuthError(error) {
   announcements.value = 'Authentication error occurred. Please refresh the page.'
 }
 
-/**
- * Handle session creation from SessionSetup component
- */
-function handleSessionCreated(event) {
-  console.log('Session created:', event)
-  
-  // Session is already created and stored by SessionSetup component
-  // The session store has been updated via sessionStore.createSession()
-  
-  if (event.isDelta) {
-    console.log('Delta session created against baseline:', event.deltaSessionId)
-  }
-}
-
-/**
- * Handle session resumption from SessionSetup component
- */
-function handleSessionResumed(event) {
-  console.log('Session resumed:', event)
-  
-  // Session is already loaded by SessionSetup component
-  // The session store has been updated via sessionStore.switchSession()
-  
-  // Start progress monitoring if session is in processing state
-  if (sessionStore.isProcessing) {
-    progress.startPolling(event.sessionId)
-  }
-}
 
 /**
  * Handle new session button click
  */
-function handleNewSession() {
-  // Clear current session to show SessionSetup component
-  sessionStore.clearSession()
-  progress.stopPolling()
+async function handleNewSession() {
+  console.log('🚀 handleNewSession called')
+  try {
+    console.log('🔄 Clearing current session...')
+    // Clear current session for simplified workflow
+    sessionStore.clearSession()
+    progress.stopPolling()
+    
+    // Create a new session automatically for simplified workflow
+    const sessionName = `Processing Session ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`
+    console.log('📝 Creating session with name:', sessionName)
+    
+    const newSessionId = await sessionStore.createSession({
+      session_name: sessionName,
+      processing_options: {
+        validation_enabled: true,
+        auto_resolution_enabled: false,
+        email_notifications: false
+      }
+    })
+    console.log('✅ Session created successfully:', newSessionId)
+    
+    notificationStore.addSuccess(`New session created: ${sessionName}`, {
+      title: 'Session Created',
+      duration: 5000
+    })
+    
+    announcements.value = 'New processing session created successfully'
+    
+  } catch (error) {
+    console.error('❌ Failed to create new session:', error)
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      cause: error.cause
+    })
+    
+    // Enhanced error handling
+    let errorMessage = 'Failed to create new session'
+    
+    if (error.message.includes('Network error') || error.message.includes('fetch')) {
+      errorMessage = 'Network error: Unable to connect to server. Please check your connection.'
+    } else if (error.message) {
+      errorMessage = `Failed to create session: ${error.message}`
+    }
+    
+    console.log('📢 Showing error notification:', errorMessage)
+    notificationStore.addError(errorMessage, {
+      title: 'Session Creation Failed',
+      actions: [{
+        label: 'Try Again',
+        handler: () => handleNewSession()
+      }]
+    })
+    
+    announcements.value = 'Failed to create new session. Please try again.'
+  }
 }
 
 /**
@@ -588,101 +611,9 @@ watch(
   }
 )
 
-/**
- * Get available downloads count
- */
-function getAvailableDownloads() {
-  // This would be populated by checking available exports
-  // For now, return a placeholder value
-  if (sessionStore.hasResults && sessionStore.canExport) {
-    return 2 // pVault CSV + Exception Report
-  }
-  return 0
-}
 
-/**
- * Handle process new action from ActionBar
- */
-function handleProcessNew(event) {
-  const { action } = event
-  
-  switch (action) {
-    case 'create-session':
-      // Clear current session to show SessionSetup
-      sessionStore.clearSession()
-      progress.stopPolling()
-      break
-      
-    case 'upload-files':
-      // Focus on file upload area or show upload modal
-      // This could scroll to FileUpload component or trigger a modal
-      announcements.value = 'Please upload both CAR and Receipt files to proceed'
-      break
-      
-    case 'start-processing':
-      // Start processing the uploaded files
-      if (sessionStore.sessionId && sessionStore.hasFiles) {
-        startProcessing()
-      }
-      break
-      
-    default:
-      console.warn('Unknown process action:', action)
-  }
-}
 
-/**
- * Handle download results action from ActionBar
- */
-function handleDownloadResults(event) {
-  const { hasFiles, fileCount } = event
-  
-  if (hasFiles && fileCount > 0) {
-    // Trigger download of available files
-    notificationStore.addInfo(`${fileCount} files available for download`, {
-      title: 'Downloads Ready',
-      actions: [
-        {
-          label: 'Download pVault CSV',
-          handler: () => downloadPvaultCSV()
-        },
-        {
-          label: 'Download Exception Report', 
-          handler: () => downloadExceptionReport()
-        }
-      ]
-    })
-  } else {
-    // No files available yet, show generation options
-    notificationStore.addInfo('Generating export files...', {
-      title: 'Preparing Downloads'
-    })
-  }
-}
 
-/**
- * Handle upload updates action from ActionBar
- */
-function handleUploadUpdates(event) {
-  const { baseSessionId, sessionName } = event
-  
-  // This would trigger delta processing workflow
-  notificationStore.addInfo(
-    `Upload updated receipts for session: ${sessionName}`,
-    {
-      title: 'Delta Processing',
-      actions: [
-        {
-          label: 'Start Delta Upload',
-          handler: () => {
-            // Implementation would create new delta session
-            announcements.value = 'Delta processing feature will allow you to upload updated receipts'
-          }
-        }
-      ]
-    }
-  )
-}
 
 /**
  * Start processing current session
@@ -828,13 +759,4 @@ function handleExportReady(options) {
   @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
 }
 
-.action-bar-spacer {
-  height: 8rem; /* Space for the fixed action bar */
-}
-
-@media (max-width: 768px) {
-  .action-bar-spacer {
-    height: 12rem; /* More space on mobile where buttons stack */
-  }
-}
 </style>

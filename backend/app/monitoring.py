@@ -197,8 +197,8 @@ class HealthChecker:
             start_time = time.time()
             
             # Test basic connectivity
-            async with engine.begin() as conn:
-                result = await conn.execute(text("SELECT 1"))
+            with engine.begin() as conn:
+                result = conn.execute(text("SELECT 1"))
                 result.fetchone()
             
             query_time = (time.time() - start_time) * 1000
@@ -210,8 +210,7 @@ class HealthChecker:
                     'size': engine.pool.size(),
                     'checked_in': engine.pool.checkedin(),
                     'checked_out': engine.pool.checkedout(),
-                    'overflow': engine.pool.overflow(),
-                    'invalid': engine.pool.invalid()
+                    'overflow': engine.pool.overflow()
                 }
             
             # Determine status based on query time and pool usage

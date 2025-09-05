@@ -375,9 +375,15 @@ export const useSessionStore = defineStore('session', () => {
    * @returns {boolean} True if any export is in progress
    */
   const hasActiveExports = computed(() => {
-    return Object.values(exportStatus.value).some(
-      exportInfo => exportInfo.status === 'exporting'
-    )
+    try {
+      const exportStatusValues = Object.values(exportStatus.value || {})
+      return exportStatusValues.some(
+        exportInfo => exportInfo && exportInfo.status === 'exporting'
+      )
+    } catch (error) {
+      console.warn('Error checking export status:', error)
+      return false
+    }
   })
 
   /**
@@ -1132,8 +1138,10 @@ export const useSessionStore = defineStore('session', () => {
     try {
       const results = await Promise.allSettled(uploadPromises)
 
-      // Check if all uploads succeeded
-      const hasErrors = results.some(result => result.status === 'rejected')
+      // Check if all uploads succeeded - safely handle array
+      const hasErrors = Array.isArray(results) ? 
+        results.some(result => result && result.status === 'rejected') : 
+        false
 
       if (hasErrors) {
         status.value = 'error'

@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc, asc, func, and_, or_
+from sqlalchemy import desc, asc, func, and_, or_, Boolean
 
 from ..database import get_db
 from ..auth import get_current_user, UserInfo
@@ -230,7 +230,7 @@ async def get_session_exceptions(
             problem_conditions.append(
                 and_(
                     EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-                    EmployeeRevision.validation_flags.op('->')('coding_incomplete').astext.cast(db.Boolean).is_(True)
+                    EmployeeRevision.validation_flags['coding_incomplete'].as_string().cast(Boolean).is_(True)
                 )
             )
         elif issue_type == "data_mismatches":
@@ -238,7 +238,7 @@ async def get_session_exceptions(
             problem_conditions.append(
                 and_(
                     EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-                    EmployeeRevision.validation_flags.op('->')('amount_mismatch').astext.cast(db.Boolean).is_(True)
+                    EmployeeRevision.validation_flags['amount_mismatch'].as_string().cast(Boolean).is_(True)
                 )
             )
         else:
@@ -436,7 +436,7 @@ def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStat
         and_(
             EmployeeRevision.session_id == session_uuid,
             EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-            EmployeeRevision.validation_flags.op('->')('coding_incomplete').astext.cast(db.Boolean).is_(True)
+            EmployeeRevision.validation_flags['coding_incomplete'].as_string().cast(Boolean).is_(True)
         )
     ).count()
     
@@ -444,7 +444,7 @@ def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStat
         and_(
             EmployeeRevision.session_id == session_uuid,
             EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-            EmployeeRevision.validation_flags.op('->')('amount_mismatch').astext.cast(db.Boolean).is_(True)
+            EmployeeRevision.validation_flags['amount_mismatch'].as_string().cast(Boolean).is_(True)
         )
     ).count()
     

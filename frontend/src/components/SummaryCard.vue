@@ -552,7 +552,7 @@ const DocumentTextIcon = {
 
 /* Preview Section Styles */
 .preview-section {
-  @apply border-t border-gray-100 px-6 py-4 bg-gradient-to-r from-gray-25 to-gray-50;
+  @apply border-t border-gray-100 px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100;
 }
 
 .preview-header {

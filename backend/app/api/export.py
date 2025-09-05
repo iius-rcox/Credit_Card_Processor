@@ -745,8 +745,8 @@ async def download_auto_pvault_csv(
         # Check access permissions (same as other endpoints)
         if not current_user.is_admin:
             session_creator = db_session.created_by.lower()
-            if "\" in session_creator:
-                session_creator = session_creator.split("\")[1]
+            if "\\" in session_creator:
+                session_creator = session_creator.split("\\")[1]
             
             if session_creator != current_user.username.lower():
                 raise HTTPException(
@@ -825,8 +825,8 @@ async def download_auto_exception_report(
         # Check access permissions
         if not current_user.is_admin:
             session_creator = db_session.created_by.lower()
-            if "\" in session_creator:
-                session_creator = session_creator.split("\")[1]
+            if "\\" in session_creator:
+                session_creator = session_creator.split("\\")[1]
             
             if session_creator != current_user.username.lower():
                 raise HTTPException(

@@ -8,8 +8,8 @@ ENV NODE_ENV=development \
     CHOKIDAR_USEPOLLING=true \
     WATCHPACK_POLLING=true
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl and build dependencies for native modules
+RUN apk add --no-cache curl build-base python3 make g++
 
 # Create application directory
 WORKDIR /app
@@ -17,7 +17,10 @@ WORKDIR /app
 # Copy package files and install dependencies
 # This is done first to leverage Docker layer caching
 COPY package*.json ./
-RUN npm install --silent && npm install vue-router@^4.2.5 --save
+RUN rm -rf node_modules package-lock.json && \
+    npm cache clean --force && \
+    npm install --silent && \
+    npm install vue-router@^4.2.5 --save
 
 # Copy configuration files
 COPY vite.config.js ./

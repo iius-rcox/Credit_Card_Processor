@@ -14,7 +14,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://backend:8001',
+        target: process.env.NODE_ENV === 'development' ? 'http://localhost:8001' : 'http://backend:8001',
         changeOrigin: true,
         secure: false,
       },

@@ -36,9 +36,16 @@ export function useApi() {
   function getAuthHeaders() {
     const headers = {}
     
-    // In development, use test user header
-    if (process.env.NODE_ENV === 'development') {
-      headers['x-dev-user'] = 'testuser'
+    // Always add dev user header in local Docker deployment
+    // Check if we're in local deployment (not production server)
+    const isLocalDeployment = window.location.hostname === 'localhost' || 
+                             window.location.hostname === '127.0.0.1' ||
+                             window.location.hostname.includes('.local')
+    
+    if (isLocalDeployment) {
+      // Use environment variable or fallback to default test user
+      const devUser = import.meta.env.VITE_DEV_USER || 'rcox'
+      headers['x-dev-user'] = devUser
     }
     
     // Add any additional headers from store or context

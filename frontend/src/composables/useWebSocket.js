@@ -10,7 +10,7 @@ import { useNotificationStore } from '@/stores/notification'
  * - Real-time processing progress updates
  * - Session status changes
  * - Error notifications and completion alerts
- * - Automatic store updates for ActionBar and SummaryResults
+ * - Automatic store updates for SummaryResults
  */
 export function useWebSocket() {
   // Reactive state
@@ -377,8 +377,12 @@ export function useWebSocket() {
 
     // Watch for session changes
     sessionStore.$subscribe((mutation, state) => {
-      if (mutation.events?.some(e => e.key === 'sessionId')) {
-        handleSessionChange(state.sessionId, mutation.events.find(e => e.key === 'sessionId').oldValue)
+      // Safely check if mutation.events is an array before using .some()
+      const events = Array.isArray(mutation.events) ? mutation.events : []
+      const sessionIdEvent = events.find(e => e.key === 'sessionId')
+      
+      if (sessionIdEvent) {
+        handleSessionChange(state.sessionId, sessionIdEvent.oldValue)
       }
     })
   })

@@ -526,7 +526,11 @@ onMounted(() => {
   
   // Watch for real-time status changes
   const stopRefreshWatcher = sessionStore.$subscribe((mutation, state) => {
-    if (mutation.events?.some(e => e.key === 'realTimeEnabled')) {
+    // Safely check if mutation.events is an array before using .some()
+    const events = Array.isArray(mutation.events) ? mutation.events : []
+    const realTimeEvent = events.find(e => e.key === 'realTimeEnabled')
+    
+    if (realTimeEvent) {
       // Clear existing interval
       if (refreshInterval) {
         clearInterval(refreshInterval)

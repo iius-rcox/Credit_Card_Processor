@@ -339,3 +339,112 @@ export async function waitFor(conditionFn, timeout = 1000, interval = 50) {
   
   throw new Error(`Condition not met within ${timeout}ms timeout`)
 }
+
+/**
+ * Mock the useApi composable with customizable responses
+ */
+export function mockUseApi(overrides = {}) {
+  const defaultMock = {
+    request: vi.fn().mockResolvedValue({ success: true }),
+    createSession: vi.fn().mockResolvedValue({ 
+      session_id: 'test-session-123',
+      status: 'idle',
+      created_at: new Date().toISOString()
+    }),
+    getSession: vi.fn().mockResolvedValue({
+      session_id: 'test-session-123',
+      session_name: 'Test Session',
+      status: 'idle',
+      uploaded_files: [],
+    }),
+    uploadFile: vi.fn().mockResolvedValue({ file_id: 'file-123' }),
+    startProcessing: vi.fn().mockResolvedValue({ status: 'processing' }),
+    isLoading: { value: false },
+    error: { value: null },
+    clearErrors: vi.fn(),
+    checkHealth: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  }
+  
+  return defaultMock
+}
+
+/**
+ * Mock session store with realistic behavior
+ */
+export function createMockSessionStore(overrides = {}) {
+  const store = {
+    // State
+    sessionId: null,
+    currentSession: null,
+    sessions: [],
+    status: 'idle',
+    user: {
+      id: 'test-user',
+      username: 'testuser',
+      email: 'test@example.com',
+      isAdmin: true,
+    },
+    error: null,
+    sessionError: null,
+    isAuthenticated: true,
+    sessionLoading: false,
+    
+    // Actions
+    createSession: vi.fn().mockImplementation(async (sessionData) => {
+      const sessionId = 'test-session-' + Date.now()
+      store.sessionId = sessionId
+      store.currentSession = {
+        session_id: sessionId,
+        session_name: sessionData.session_name,
+        status: 'idle',
+        created_at: new Date().toISOString(),
+        ...sessionData,
+      }
+      return sessionId
+    }),
+    switchSession: vi.fn().mockImplementation(async (sessionId) => {
+      store.sessionId = sessionId
+      store.currentSession = {
+        session_id: sessionId,
+        session_name: 'Test Session',
+        status: 'idle',
+        created_at: new Date().toISOString(),
+      }
+    }),
+    clearSession: vi.fn(),
+    clearError: vi.fn().mockImplementation((errorType) => {
+      if (errorType === 'session') {
+        store.sessionError = null
+      } else {
+        store.error = null
+      }
+    }),
+    setError: vi.fn().mockImplementation((error) => {
+      store.error = error
+    }),
+    setSessionError: vi.fn().mockImplementation((error) => {
+      store.sessionError = error
+    }),
+    
+    // Getters
+    hasSession: false,
+    userIsAuthenticated: true,
+    sessionStatus: 'idle',
+    hasError: false,
+    allErrors: [],
+    
+    ...overrides,
+  }
+  
+  return store
+}
+
+/**
+ * Simulate user interactions with proper timing
+ */
+export async function simulateUserAction(action) {
+  await action()
+  await flushPromises()
+  return new Promise(resolve => setTimeout(resolve, 10))
+}

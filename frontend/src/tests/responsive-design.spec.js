@@ -78,7 +78,6 @@ describe('Responsive Design Implementation', () => {
           plugins: [pinia],
           stubs: {
             AuthDisplay: true,
-            SessionSetup: true,
             FileUpload: true,
             ProgressTracker: true,
             ResultsDisplay: true,
@@ -111,7 +110,6 @@ describe('Responsive Design Implementation', () => {
           plugins: [pinia],
           stubs: {
             AuthDisplay: true,
-            SessionSetup: true,
             FileUpload: true,
             ProgressTracker: true,
             ResultsDisplay: true,
@@ -135,7 +133,6 @@ describe('Responsive Design Implementation', () => {
           plugins: [pinia],
           stubs: {
             AuthDisplay: true,
-            SessionSetup: true,
             FileUpload: true,
             ProgressTracker: true,
             ResultsDisplay: true,
@@ -159,7 +156,6 @@ describe('Responsive Design Implementation', () => {
           plugins: [pinia],
           stubs: {
             AuthDisplay: true,
-            SessionSetup: true,
             FileUpload: true,
             ProgressTracker: true,
             ResultsDisplay: true,
@@ -179,7 +175,6 @@ describe('Responsive Design Implementation', () => {
           plugins: [pinia],
           stubs: {
             AuthDisplay: true,
-            SessionSetup: true,
             FileUpload: true,
             ProgressTracker: true,
             ResultsDisplay: true,
@@ -199,7 +194,6 @@ describe('Responsive Design Implementation', () => {
           plugins: [pinia],
           stubs: {
             AuthDisplay: true,
-            SessionSetup: true,
             FileUpload: true,
             ProgressTracker: true,
             ResultsDisplay: true,

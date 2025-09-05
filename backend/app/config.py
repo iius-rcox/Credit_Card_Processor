@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # Session and security settings
     session_timeout_minutes: int = Field(default=480, alias="SESSION_TIMEOUT_MINUTES")  # 8 hours
     session_secret_key: str = Field(
-        default=None,
+        default="test_secret_key_for_development_only_min32chars",
         alias="SESSION_SECRET_KEY",
         min_length=32,
         description="Secret key for session management - required in production"

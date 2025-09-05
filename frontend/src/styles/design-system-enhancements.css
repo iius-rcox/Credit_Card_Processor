@@ -1,0 +1,771 @@
+/* Design System Enhancements for Credit Card Processor */
+/* Implements the comprehensive design system with business-focused improvements */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design System CSS Custom Properties */
+@layer base {
+  :root {
+    /* Enhanced Color Tokens */
+    --color-brand-primary: #1976D2;
+    --color-brand-primary-light: #2196F3;
+    --color-brand-primary-dark: #1565C0;
+    --color-brand-primary-50: #E3F2FD;
+    --color-brand-primary-100: #BBDEFB;
+    
+    /* Business Context Colors */
+    --color-financial-success: #4CAF50;
+    --color-financial-warning: #FF9800;
+    --color-financial-error: #D32F2F;
+    --color-financial-info: #0288D1;
+    --color-financial-neutral: #757575;
+    
+    /* Status Colors for Business Operations */
+    --color-status-processing: #FF9800;
+    --color-status-completed: #4CAF50;
+    --color-status-pending: #757575;
+    --color-status-error: #D32F2F;
+    --color-status-ready: #4CAF50;
+    --color-status-attention: #FF5722;
+    
+    /* Enhanced Shadow System */
+    --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --shadow-card-active: 0 1px 2px rgba(0, 0, 0, 0.1);
+    --shadow-focus: 0 0 0 3px rgba(25, 118, 210, 0.2);
+    --shadow-error: 0 0 0 3px rgba(211, 47, 47, 0.2);
+    --shadow-success: 0 0 0 3px rgba(76, 175, 80, 0.2);
+    
+    /* Enhanced Spacing Scale */
+    --spacing-micro: 2px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --spacing-xxl: 48px;
+    --spacing-xxxl: 64px;
+    
+    /* Business-Focused Typography */
+    --font-size-financial-large: 28px;
+    --font-size-financial-medium: 20px;
+    --font-size-financial-small: 14px;
+    --font-size-metadata: 11px;
+    --font-weight-financial: 600;
+    
+    /* Animation Timing */
+    --duration-fast: 150ms;
+    --duration-medium: 250ms;
+    --duration-slow: 350ms;
+    --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
+    --easing-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  }
+
+  /* Enhanced Typography with Business Context */
+  .text-financial-large {
+    font-size: var(--font-size-financial-large);
+    font-weight: var(--font-weight-financial);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  .text-financial-medium {
+    font-size: var(--font-size-financial-medium);
+    font-weight: var(--font-weight-financial);
+    line-height: 1.3;
+  }
+
+  .text-financial-small {
+    font-size: var(--font-size-financial-small);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .text-metadata {
+    font-size: var(--font-size-metadata);
+    font-weight: 400;
+    line-height: 1.3;
+    color: var(--color-financial-neutral);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Enhanced Focus Management */
+  .focus-ring {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+    transition: box-shadow var(--duration-fast) var(--easing-standard);
+  }
+
+  .focus-ring-error {
+    box-shadow: var(--shadow-error);
+  }
+
+  .focus-ring-success {
+    box-shadow: var(--shadow-success);
+  }
+}
+
+/* Enhanced Component System */
+@layer components {
+  
+  /* Business-Focused Card System */
+  .card-business {
+    @apply bg-white rounded-lg border border-gray-200 p-6;
+    box-shadow: var(--shadow-card);
+    transition: all var(--duration-medium) var(--easing-standard);
+  }
+
+  .card-business:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
+
+  .card-business.card-interactive {
+    cursor: pointer;
+  }
+
+  .card-business.card-interactive:active {
+    box-shadow: var(--shadow-card-active);
+    transform: translateY(0);
+  }
+
+  /* Status-Aware Cards */
+  .card-status-success {
+    @apply card-business border-green-200 bg-green-50;
+  }
+
+  .card-status-warning {
+    @apply card-business border-orange-200 bg-orange-50;
+  }
+
+  .card-status-error {
+    @apply card-business border-red-200 bg-red-50;
+  }
+
+  .card-status-processing {
+    @apply card-business border-blue-200 bg-blue-50;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-status-processing::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--color-brand-primary), transparent);
+    animation: processing-shimmer 2s infinite;
+  }
+
+  /* Enhanced Button System */
+  .btn-business {
+    @apply inline-flex items-center justify-center min-h-[44px] px-6 py-3 rounded-lg font-medium;
+    @apply transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+    text-decoration: none;
+    border: 1px solid transparent;
+  }
+
+  .btn-business-primary {
+    @apply btn-business bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white;
+    @apply focus:ring-blue-500;
+  }
+
+  .btn-business-secondary {
+    @apply btn-business bg-white hover:bg-gray-50 active:bg-gray-100 text-blue-600;
+    @apply border-blue-600 hover:border-blue-700 focus:ring-blue-500;
+  }
+
+  .btn-business-success {
+    @apply btn-business bg-green-600 hover:bg-green-700 active:bg-green-800 text-white;
+    @apply focus:ring-green-500;
+  }
+
+  .btn-business-danger {
+    @apply btn-business bg-red-600 hover:bg-red-700 active:bg-red-800 text-white;
+    @apply focus:ring-red-500;
+  }
+
+  .btn-business-ghost {
+    @apply btn-business bg-transparent hover:bg-gray-100 active:bg-gray-200 text-gray-700;
+    @apply focus:ring-gray-500;
+  }
+
+  /* Button Loading States */
+  .btn-business-loading {
+    @apply pointer-events-none relative;
+  }
+
+  .btn-business-loading .btn-content {
+    @apply opacity-0;
+  }
+
+  .btn-business-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: button-spin 0.8s linear infinite;
+  }
+
+  /* Enhanced Form Elements */
+  .form-input-business {
+    @apply w-full min-h-[44px] px-4 py-3 border border-gray-300 rounded-lg;
+    @apply bg-white text-base placeholder-gray-500 transition-all duration-200;
+    @apply focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-25;
+    @apply disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500;
+  }
+
+  .form-input-business.input-error {
+    @apply border-red-500 focus:border-red-500 focus:ring-red-500;
+  }
+
+  .form-input-business.input-success {
+    @apply border-green-500 focus:border-green-500 focus:ring-green-500;
+  }
+
+  .form-label-business {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+
+  .form-error-message {
+    @apply text-sm text-red-600 mt-1 flex items-start;
+  }
+
+  .form-success-message {
+    @apply text-sm text-green-600 mt-1 flex items-start;
+  }
+
+  .form-helper-text {
+    @apply text-sm text-gray-500 mt-1;
+  }
+
+  /* File Upload Enhancement */
+  .file-upload-zone {
+    @apply border-2 border-dashed border-gray-300 rounded-lg p-8 text-center;
+    @apply transition-all duration-200 hover:border-gray-400 hover:bg-gray-50;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-25;
+    min-height: 200px;
+    position: relative;
+  }
+
+  .file-upload-zone.dragover {
+    @apply border-blue-500 bg-blue-50 border-solid;
+  }
+
+  .file-upload-zone.has-files {
+    @apply border-green-500 bg-green-50 border-solid;
+  }
+
+  .file-upload-zone.error {
+    @apply border-red-500 bg-red-50 border-solid;
+  }
+
+  .file-upload-zone.processing {
+    @apply pointer-events-none opacity-75;
+  }
+
+  .file-upload-icon {
+    @apply w-12 h-12 mx-auto mb-4 text-gray-400;
+  }
+
+  .file-upload-zone.dragover .file-upload-icon,
+  .file-upload-zone.has-files .file-upload-icon {
+    @apply text-blue-500;
+  }
+
+  /* Business Data Display */
+  .data-table-business {
+    @apply w-full border-collapse rounded-lg overflow-hidden;
+    box-shadow: var(--shadow-card);
+  }
+
+  .data-table-business th {
+    @apply bg-gray-50 px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+    @apply border-b border-gray-200;
+  }
+
+  .data-table-business td {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-b border-gray-200;
+  }
+
+  .data-table-business tbody tr:hover {
+    @apply bg-gray-50;
+  }
+
+  .data-table-business tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /* Financial Data Formatting */
+  .currency-display {
+    @apply font-mono text-right tabular-nums;
+  }
+
+  .currency-positive {
+    @apply text-green-600;
+  }
+
+  .currency-negative {
+    @apply text-red-600;
+  }
+
+  .currency-zero {
+    @apply text-gray-500;
+  }
+
+  .employee-id {
+    @apply font-mono text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded;
+  }
+
+  /* Status Indicators */
+  .status-badge-business {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+  }
+
+  .status-badge-processing {
+    @apply status-badge-business bg-orange-100 text-orange-800;
+  }
+
+  .status-badge-completed {
+    @apply status-badge-business bg-green-100 text-green-800;
+  }
+
+  .status-badge-error {
+    @apply status-badge-business bg-red-100 text-red-800;
+  }
+
+  .status-badge-pending {
+    @apply status-badge-business bg-gray-100 text-gray-800;
+  }
+
+  .status-badge-ready {
+    @apply status-badge-business bg-blue-100 text-blue-800;
+  }
+
+  /* Progress Indicators */
+  .progress-business {
+    @apply w-full bg-gray-200 rounded-full overflow-hidden;
+    height: 8px;
+  }
+
+  .progress-business.large {
+    height: 12px;
+  }
+
+  .progress-fill-business {
+    @apply h-full rounded-full transition-all duration-300;
+    background-color: var(--color-brand-primary);
+  }
+
+  .progress-fill-business.processing {
+    background: linear-gradient(45deg, 
+      var(--color-status-processing) 25%, 
+      transparent 25%, 
+      transparent 50%, 
+      var(--color-status-processing) 50%, 
+      var(--color-status-processing) 75%, 
+      transparent 75%);
+    background-size: 16px 16px;
+    animation: progress-stripes 1s linear infinite;
+  }
+
+  .progress-fill-business.completed {
+    background-color: var(--color-status-completed);
+  }
+
+  .progress-fill-business.error {
+    background-color: var(--color-status-error);
+  }
+
+  /* Loading States */
+  .skeleton-business {
+    @apply bg-gray-200 rounded animate-pulse;
+  }
+
+  .skeleton-text {
+    @apply skeleton-business h-4;
+  }
+
+  .skeleton-text.large {
+    @apply h-6;
+  }
+
+  .skeleton-text.small {
+    @apply h-3;
+  }
+
+  .skeleton-avatar {
+    @apply skeleton-business w-10 h-10 rounded-full;
+  }
+
+  .skeleton-button {
+    @apply skeleton-business h-10 w-24;
+  }
+
+  /* Business Metrics Display */
+  .metric-card {
+    @apply card-business text-center;
+  }
+
+  .metric-value {
+    @apply text-financial-large text-gray-900 mb-1;
+  }
+
+  .metric-label {
+    @apply text-financial-small text-gray-600 uppercase tracking-wide;
+  }
+
+  .metric-change {
+    @apply text-sm font-medium flex items-center justify-center mt-2;
+  }
+
+  .metric-change.positive {
+    @apply text-green-600;
+  }
+
+  .metric-change.negative {
+    @apply text-red-600;
+  }
+
+  .metric-change.neutral {
+    @apply text-gray-600;
+  }
+
+  /* Notification System */
+  .notification-business {
+    @apply flex items-start p-4 rounded-lg shadow-lg max-w-md;
+    @apply border-l-4 mb-4;
+  }
+
+  .notification-success {
+    @apply notification-business bg-green-50 border-green-500;
+  }
+
+  .notification-error {
+    @apply notification-business bg-red-50 border-red-500;
+  }
+
+  .notification-warning {
+    @apply notification-business bg-orange-50 border-orange-500;
+  }
+
+  .notification-info {
+    @apply notification-business bg-blue-50 border-blue-500;
+  }
+
+  .notification-icon {
+    @apply flex-shrink-0 w-5 h-5 mr-3 mt-0.5;
+  }
+
+  .notification-content {
+    @apply flex-1 min-w-0;
+  }
+
+  .notification-title {
+    @apply text-sm font-medium mb-1;
+  }
+
+  .notification-message {
+    @apply text-sm;
+  }
+
+  .notification-actions {
+    @apply mt-3 flex space-x-2;
+  }
+
+  /* Enhanced Mobile Optimization */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  .mobile-stack {
+    @apply flex flex-col space-y-4;
+  }
+
+  @screen tablet {
+    .mobile-stack {
+      @apply flex-row space-y-0 space-x-4;
+    }
+  }
+
+  /* Business-Specific Layout Patterns */
+  .business-layout-header {
+    @apply bg-white border-b border-gray-200 px-4 py-6;
+  }
+
+  .business-layout-content {
+    @apply max-w-7xl mx-auto px-4 py-6;
+  }
+
+  .business-layout-sidebar {
+    @apply bg-gray-50 border-r border-gray-200 p-4;
+    min-width: 280px;
+  }
+
+  .business-section {
+    @apply mb-8 last:mb-0;
+  }
+
+  .business-section-header {
+    @apply flex items-center justify-between mb-6;
+  }
+
+  .business-section-title {
+    @apply text-xl font-semibold text-gray-900;
+  }
+
+  .business-section-description {
+    @apply text-sm text-gray-600 mt-1;
+  }
+
+  /* Workflow Step Indicators */
+  .workflow-steps {
+    @apply flex items-center justify-between mb-8;
+  }
+
+  .workflow-step {
+    @apply flex items-center;
+  }
+
+  .workflow-step-number {
+    @apply flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium;
+    @apply bg-gray-200 text-gray-600;
+  }
+
+  .workflow-step.active .workflow-step-number {
+    @apply bg-blue-600 text-white;
+  }
+
+  .workflow-step.completed .workflow-step-number {
+    @apply bg-green-600 text-white;
+  }
+
+  .workflow-step-label {
+    @apply ml-3 text-sm font-medium text-gray-600;
+  }
+
+  .workflow-step.active .workflow-step-label {
+    @apply text-blue-600;
+  }
+
+  .workflow-step.completed .workflow-step-label {
+    @apply text-green-600;
+  }
+
+  .workflow-step-connector {
+    @apply flex-1 h-px bg-gray-200 mx-4;
+  }
+
+  .workflow-step.completed + .workflow-step .workflow-step-connector {
+    @apply bg-green-300;
+  }
+}
+
+/* Enhanced Animations */
+@keyframes processing-shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+@keyframes button-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 16px 0; }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Enhanced Utility Classes */
+@layer utilities {
+  .animate-slide-in-right {
+    animation: slide-in-right var(--duration-medium) var(--easing-decelerate);
+  }
+
+  .animate-slide-out-right {
+    animation: slide-out-right var(--duration-medium) var(--easing-accelerate);
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up var(--duration-medium) var(--easing-decelerate);
+  }
+
+  .transition-business {
+    transition: all var(--duration-medium) var(--easing-standard);
+  }
+
+  .transition-fast {
+    transition: all var(--duration-fast) var(--easing-standard);
+  }
+
+  .transition-slow {
+    transition: all var(--duration-slow) var(--easing-standard);
+  }
+
+  /* Responsive Text Utilities */
+  .text-responsive-lg {
+    @apply text-lg;
+  }
+
+  @screen tablet {
+    .text-responsive-lg {
+      @apply text-xl;
+    }
+  }
+
+  @screen desktop {
+    .text-responsive-lg {
+      @apply text-2xl;
+    }
+  }
+
+  .text-responsive-md {
+    @apply text-base;
+  }
+
+  @screen tablet {
+    .text-responsive-md {
+      @apply text-lg;
+    }
+  }
+
+  @screen desktop {
+    .text-responsive-md {
+      @apply text-xl;
+    }
+  }
+
+  /* Business Context Utilities */
+  .bg-financial-context {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  }
+
+  .border-financial-accent {
+    border-color: var(--color-brand-primary);
+  }
+
+  .text-financial-accent {
+    color: var(--color-brand-primary);
+  }
+
+  .shadow-business {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-business-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* Print Styles for Business Reports */
+  @media print {
+    .print-hide {
+      display: none !important;
+    }
+
+    .print-break-before {
+      break-before: page;
+    }
+
+    .print-break-after {
+      break-after: page;
+    }
+
+    .print-no-break {
+      break-inside: avoid;
+    }
+  }
+}
+
+/* Enhanced High Contrast Mode */
+@media (prefers-contrast: high) {
+  :root {
+    --color-brand-primary: #0000ff;
+    --color-financial-success: #00ff00;
+    --color-financial-error: #ff0000;
+    --color-financial-warning: #ffff00;
+    --shadow-card: 0 0 0 2px #ffffff;
+    --shadow-card-hover: 0 0 0 3px #ffffff;
+  }
+
+  .card-business,
+  .btn-business,
+  .form-input-business {
+    border-width: 2px;
+  }
+}
+
+/* Enhanced Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .processing-shimmer::before {
+    animation: none;
+  }
+}
+
+/* Dark Mode Foundation (Future Enhancement) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #1a1a1a;
+    --color-bg-secondary: #2d2d2d;
+    --color-text-primary: #ffffff;
+    --color-text-secondary: #a0a0a0;
+    --color-border: #404040;
+  }
+  
+  /* Dark mode styles would be expanded here in future versions */
+}
