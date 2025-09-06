@@ -1,16 +1,23 @@
 # Frontend Development Dockerfile
 # Optimized for Vite dev server with hot reload
 
-FROM node:20-alpine
+FROM node:20-slim
 
 # Set environment variables
 ENV NODE_ENV=development \
     CHOKIDAR_USEPOLLING=true \
     WATCHPACK_POLLING=true \
-    ROLLUP_CACHE_DIR=/tmp/rollup-cache
+    PATH=/app/node_modules/.bin:$PATH \
+    npm_config_fund=false \
+    npm_config_audit=false
 
 # Install curl and build dependencies for native modules
-RUN apk add --no-cache curl build-base python3 make g++
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    python3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create application directory
 WORKDIR /app
@@ -18,12 +25,16 @@ WORKDIR /app
 # Copy package files and install dependencies
 # This is done first to leverage Docker layer caching
 COPY package*.json ./
+
+# Install dependencies with explicit handling of optional dependencies
 RUN rm -rf node_modules package-lock.json && \
     npm cache clean --force && \
-    npm install --silent && \
-    npm install vue-router@^4.2.5 --save && \
-    npm install --force @rollup/rollup-linux-x64-musl@4.0.0 --silent || \
-    npm rebuild --silent || true
+    npm install --no-optional && \
+    npm install vite @vitejs/plugin-vue --save-dev && \
+    npm install @rollup/rollup-linux-x64-gnu@4.9.5 --save-optional --silent || echo "GNU rollup failed" && \
+    npm install @rollup/rollup-linux-x64-musl@4.9.5 --save-optional --silent || echo "MUSL rollup failed" && \
+    npm ls vite && \
+    ls -la node_modules/.bin/vite || echo "Vite binary check failed"
 
 # Copy configuration files
 COPY vite.config.js ./
@@ -36,11 +47,22 @@ COPY src/ ./src/
 # Create public directory if it doesn't exist
 RUN mkdir -p public
 
+# No entrypoint script needed - using direct command
+
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001 -G nodejs && \
-    chown -R nextjs:nodejs /app
-USER nextjs
+RUN groupadd -g 1001 nodejs && \
+    useradd -u 1001 -g nodejs -s /bin/bash -m vueuser && \
+    chown -R vueuser:nodejs /app && \
+    chmod +x /app/node_modules/.bin/* 2>/dev/null || echo "No .bin files to chmod"
+
+USER vueuser
+
+# Verify installation as user
+RUN echo "PATH=$PATH" && \
+    node --version && \
+    npm --version && \
+    which vite || echo "vite not in PATH" && \
+    ls -la /app/node_modules/.bin/ | grep vite || echo "vite binary not found"
 
 # Expose port
 EXPOSE 3000
@@ -49,9 +71,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000 || exit 1
 
-# Development command with hot reload
-# Vite dev server with host binding for Docker container access
-CMD ["npm", "run", "dev", "--", \
-     "--host", "0.0.0.0", \
-     "--port", "3000", \
-     "--strictPort"]
+# Development command with hot reload  
+# Use shell command to ensure proper PATH and vite availability
+CMD ["sh", "-c", "echo 'Starting frontend with PATH: '$PATH && which node && which npm && ls -la node_modules/.bin/vite || npm install vite && npm run dev || npx vite --host 0.0.0.0 --port 3000"]
