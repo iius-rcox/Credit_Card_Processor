@@ -449,7 +449,7 @@
       <div class="space-y-3 max-h-64 overflow-y-auto">
         <div
           v-for="(activity, index) in progress.recentActivities"
-          :key="`activity-${index}`"
+          :key="activity.id || activity.activity_id || activity.timestamp || index"
           class="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg"
         >
           <div class="flex-shrink-0 mt-1">
