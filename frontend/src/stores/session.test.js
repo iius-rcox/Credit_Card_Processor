@@ -27,6 +27,7 @@ describe('Session Store', () => {
         uploaded_files: [],
       }),
       request: vi.fn().mockResolvedValue({ success: true }),
+      getProcessingStatus: vi.fn(),
     }
     
     useApi.mockReturnValue(mockApi)
@@ -163,6 +164,51 @@ describe('Session Store', () => {
       expect(store.processingStatus).toBe('idle')
       expect(store.results).toBe(null)
       expect(store.error).toBe(null)
+    })
+  })
+
+  describe('Progress Handling', () => {
+    it('uses percent_complete value even when 0', async () => {
+      mockApi.getProcessingStatus.mockResolvedValueOnce({
+        status: 'completed',
+        percent_complete: 0,
+        progress: 50,
+      })
+      store.sessionId = 'session-1'
+      store.status = 'processing'
+      vi.useFakeTimers()
+      store.startStatusPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(store.progress).toBe(0)
+      vi.useRealTimers()
+    })
+
+    it('falls back to progress when percent_complete is null', async () => {
+      mockApi.getProcessingStatus.mockResolvedValueOnce({
+        status: 'completed',
+        percent_complete: null,
+        progress: 0,
+      })
+      store.sessionId = 'session-1'
+      store.status = 'processing'
+      vi.useFakeTimers()
+      store.startStatusPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(store.progress).toBe(0)
+      vi.useRealTimers()
+    })
+
+    it('defaults to 0 when progress values are missing', async () => {
+      mockApi.getProcessingStatus.mockResolvedValueOnce({
+        status: 'completed',
+      })
+      store.sessionId = 'session-1'
+      store.status = 'processing'
+      vi.useFakeTimers()
+      store.startStatusPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(store.progress).toBe(0)
+      vi.useRealTimers()
     })
   })
 
