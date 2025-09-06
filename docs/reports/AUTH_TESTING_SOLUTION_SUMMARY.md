@@ -217,7 +217,7 @@ AuthIntegrationTester (Base)
 - Supports `remote-user` header (primary)
 - Supports `http_remote_user` header (secondary)
 - Supports `x-forwarded-user` header (proxy scenarios)
-- Development mode fallback with `x-dev-user`
+- Development mode fallback requires explicit `x-dev-user` header (no default user)
 
 ## Performance Assessment Resolution
 
