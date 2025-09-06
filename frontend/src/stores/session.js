@@ -802,7 +802,8 @@ export const useSessionStore = defineStore('session', () => {
 
         // Update status and progress
         status.value = statusData.status
-        progress.value = statusData.percent_complete || statusData.progress || 0
+        // Use nullish coalescing so 0 values are preserved
+        progress.value = statusData.percent_complete ?? statusData.progress ?? 0
 
         // Add new activities if any
         const responseActivities = statusData.recent_activities || statusData.activities || []

@@ -429,16 +429,13 @@ async def get_current_user_ws(websocket: WebSocket) -> UserInfo:
     Security:
         - Uses same authentication logic as HTTP requests
         - Validates Windows authentication headers
-        - Supports development fallback
+        - Supports development fallback (requires explicit `x-dev-user` header)
     """
     try:
-        # Extract headers from WebSocket
-        headers = dict(websocket.headers)
-        
         # Try to extract username from various header sources
         username = None
         auth_method = "unknown"
-        
+
         # Check Windows authentication headers (same order as HTTP auth)
         auth_headers = [
             ('remote-user', 'windows'),
@@ -446,18 +443,20 @@ async def get_current_user_ws(websocket: WebSocket) -> UserInfo:
             ('x-forwarded-user', 'proxy'),
             ('auth-user', 'basic'),
         ]
-        
+
         for header_name, method in auth_headers:
-            header_value = headers.get(header_name)
+            header_value = websocket.headers.get(header_name)
             if header_value:
                 username = header_value
                 auth_method = method
                 break
-        
-        # Development fallback (same as HTTP auth)
+
+        # Development fallback (requires explicit header to avoid silent auth)
         if not username and settings.debug:
-            username = headers.get('x-dev-user', 'dev_user')
-            auth_method = 'development'
+            dev_user = websocket.headers.get('x-dev-user')
+            if dev_user:
+                username = dev_user
+                auth_method = 'development'
         
         if not username:
             # Close WebSocket with authentication error
