@@ -1,12 +1,13 @@
 # Frontend Development Dockerfile
 # Optimized for Vite dev server with hot reload
 
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Set environment variables
 ENV NODE_ENV=development \
     CHOKIDAR_USEPOLLING=true \
-    WATCHPACK_POLLING=true
+    WATCHPACK_POLLING=true \
+    ROLLUP_CACHE_DIR=/tmp/rollup-cache
 
 # Install curl and build dependencies for native modules
 RUN apk add --no-cache curl build-base python3 make g++
@@ -20,7 +21,9 @@ COPY package*.json ./
 RUN rm -rf node_modules package-lock.json && \
     npm cache clean --force && \
     npm install --silent && \
-    npm install vue-router@^4.2.5 --save
+    npm install vue-router@^4.2.5 --save && \
+    npm install --force @rollup/rollup-linux-x64-musl@4.0.0 --silent || \
+    npm rebuild --silent || true
 
 # Copy configuration files
 COPY vite.config.js ./
