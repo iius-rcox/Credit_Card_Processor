@@ -361,10 +361,24 @@ const varianceClasses = computed(() => {
 })
 
 const hasValidationFlags = computed(() => {
-  return (
-    props.employee.validation_flags &&
-    Object.keys(props.employee.validation_flags).length > 0
-  )
+  // Check if validation_flags exists and is either a non-empty string or a non-empty object
+  const flags = props.employee.validation_flags
+  
+  if (!flags) {
+    return false
+  }
+  
+  // Handle string validation flags (e.g., "NEEDS_ATTENTION")
+  if (typeof flags === 'string') {
+    return flags.trim().length > 0
+  }
+  
+  // Handle object validation flags
+  if (typeof flags === 'object' && !Array.isArray(flags)) {
+    return Object.keys(flags).length > 0
+  }
+  
+  return false
 })
 
 const canResolve = computed(() => {

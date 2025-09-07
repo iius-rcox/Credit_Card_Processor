@@ -327,7 +327,7 @@ async def upload_files_to_session(
     session_id: str,
     car_file: UploadFile = File(..., description="CAR file (PDF, max 100MB)"),
     receipt_file: UploadFile = File(..., description="Receipt file (PDF, max 300GB)"),
-    auto_process: bool = True,
+    auto_process: bool = False,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user)

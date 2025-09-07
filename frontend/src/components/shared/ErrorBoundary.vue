@@ -4,10 +4,14 @@
       <div class="error-boundary card bg-error-50 border-error-200 max-w-2xl mx-auto">
         <div class="flex items-start space-x-4">
           <div class="flex-shrink-0">
-            <ExclamationTriangleIcon 
+            <svg 
               class="h-8 w-8 text-error-600" 
-              aria-hidden="true" 
-            />
+              aria-hidden="true"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+            </svg>
           </div>
           <div class="flex-1">
             <h2 
@@ -19,6 +23,18 @@
             <p class="text-error-700 mb-4">
               {{ errorMessage }}
             </p>
+            
+            <!-- Debug info for Safari -->
+            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+              <h3 class="font-semibold text-blue-800 mb-2">Debug Information:</h3>
+              <div class="text-blue-700 space-y-1">
+                <div><strong>Time:</strong> {{ new Date().toLocaleString() }}</div>
+                <div><strong>Browser:</strong> {{ navigator.userAgent.includes('Safari') ? 'Safari' : 'Other' }}</div>
+                <div><strong>Error triggered:</strong> {{ errorTriggered }}</div>
+                <div v-if="errorComponentName"><strong>Component:</strong> {{ errorComponentName }}</div>
+                <div><strong>Current URL:</strong> {{ window.location.href }}</div>
+              </div>
+            </div>
             
             <div v-if="showDetails && errorDetails" class="mb-4">
               <button
@@ -101,7 +117,6 @@ import { ref, onErrorCaptured, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification.js'
 import { useAccessibility } from '@/composables/useAccessibility.js'
-import { ExclamationTriangleIcon } from '@heroicons/vue/24/solid'
 
 const props = defineProps({
   /**
@@ -151,6 +166,10 @@ const retryCount = ref(0)
 const previousFocusElement = ref(null) // Track focus before error
 const errorBoundaryRef = ref(null)
 
+// Debug information for Safari troubleshooting
+const errorTriggered = ref('')
+const errorComponentName = ref('')
+
 const canGoHome = computed(() => {
   return props.showNavigation && router && router.currentRoute.value.path !== '/'
 })
@@ -159,9 +178,35 @@ const canGoHome = computed(() => {
  * Handle Vue errors
  */
 onErrorCaptured((error, instance, info) => {
-  console.error('Error captured by ErrorBoundary:', error)
+  // Capture debug info for Safari
+  errorTriggered.value = 'Vue onErrorCaptured'
+  errorComponentName.value = instance?.type?.name || instance?.type?.__name || 'Unknown'
+  
+  console.error('=== ERROR BOUNDARY CAUGHT ERROR ===')
+  console.error('Error:', error)
+  console.error('Error message:', error?.message)
+  console.error('Error stack:', error?.stack)
+  console.error('Error name:', error?.name)
   console.error('Component instance:', instance)
+  console.error('Component type:', instance?.type)
+  console.error('Component name:', instance?.type?.name || instance?.type?.__name)
   console.error('Error info:', info)
+  console.error('Props:', instance?.props)
+  console.error('Component tree:', instance?.parent?.type?.name)
+  console.error('Current route:', router?.currentRoute?.value)
+  console.error('=== END ERROR DETAILS ===')
+
+  // Add to window for debugging
+  if (typeof window !== 'undefined') {
+    window.lastErrorBoundaryError = {
+      error,
+      instance,
+      info,
+      timestamp: new Date().toISOString(),
+      componentName: errorComponentName.value,
+      triggerType: errorTriggered.value
+    }
+  }
 
   handleError(error, info)
   
@@ -174,12 +219,31 @@ onErrorCaptured((error, instance, info) => {
  */
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
-    console.error('Unhandled JavaScript error:', event.error)
+    // Capture debug info for Safari
+    errorTriggered.value = 'JavaScript Error'
+    errorComponentName.value = 'Global/Window'
+    
+    console.error('=== UNHANDLED JAVASCRIPT ERROR ===')
+    console.error('Error:', event.error)
+    console.error('Message:', event.message)
+    console.error('Filename:', event.filename)
+    console.error('Line:', event.lineno)
+    console.error('Column:', event.colno)
+    console.error('Event:', event)
+    console.error('=== END JS ERROR ===')
     handleError(event.error, 'Unhandled JavaScript error')
   })
 
   window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled Promise rejection:', event.reason)
+    // Capture debug info for Safari
+    errorTriggered.value = 'Promise Rejection'
+    errorComponentName.value = 'Global/Promise'
+    
+    console.error('=== UNHANDLED PROMISE REJECTION ===')
+    console.error('Reason:', event.reason)
+    console.error('Promise:', event.promise)
+    console.error('Event:', event)
+    console.error('=== END PROMISE REJECTION ===')
     handleError(event.reason, 'Unhandled Promise rejection')
   })
 }

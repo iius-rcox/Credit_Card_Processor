@@ -237,18 +237,30 @@ import ErrorBoundary from './components/shared/ErrorBoundary.vue'
 import NotificationContainer from './components/shared/NotificationContainer.vue'
 
 // Lazy-load components for better performance
-const FileUpload = defineAsyncComponent(
-  () => import('./components/FileUpload.vue')
-)
-const ProgressTracker = defineAsyncComponent(
-  () => import('./components/ProgressTracker.vue')
-)
-const SummaryResults = defineAsyncComponent(
-  () => import('./components/SummaryResults.vue')
-)
-const ExportActions = defineAsyncComponent(
-  () => import('./components/ExportActions.vue')
-)
+const FileUpload = defineAsyncComponent({
+  loader: () => import('./components/FileUpload.vue'),
+  errorComponent: { template: '<div class="text-red-600">Failed to load FileUpload component</div>' },
+  delay: 200,
+  timeout: 10000
+})
+const ProgressTracker = defineAsyncComponent({
+  loader: () => import('./components/ProgressTracker.vue'),
+  errorComponent: { template: '<div class="text-red-600">Failed to load ProgressTracker component</div>' },
+  delay: 200,
+  timeout: 10000
+})
+const SummaryResults = defineAsyncComponent({
+  loader: () => import('./components/SummaryResults.vue'),
+  errorComponent: { template: '<div class="text-red-600">Failed to load SummaryResults component</div>' },
+  delay: 200,
+  timeout: 10000
+})
+const ExportActions = defineAsyncComponent({
+  loader: () => import('./components/ExportActions.vue'),
+  errorComponent: { template: '<div class="text-red-600">Failed to load ExportActions component</div>' },
+  delay: 200,
+  timeout: 10000
+})
 
 const sessionStore = useSessionStore()
 const notificationStore = useNotificationStore()

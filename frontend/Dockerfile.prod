@@ -8,8 +8,8 @@ ARG VITE_API_BASE_URL
 ARG VITE_APP_TITLE
 ARG VITE_DEV_USER
 
-# Set environment variables for build stage - need dev deps for building
-ENV NODE_ENV=development
+# Set environment variables for build stage - production build mode
+ENV NODE_ENV=production
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_APP_TITLE=${VITE_APP_TITLE}
 ENV VITE_DEV_USER=${VITE_DEV_USER}
@@ -22,9 +22,9 @@ WORKDIR /app
 
 # Copy package files 
 COPY package*.json ./
-# Work around npm bug with rollup optional dependencies
+# Install all dependencies including dev dependencies for build tools
 RUN rm -rf package-lock.json node_modules && \
-    npm install --silent && \
+    npm install --include=dev --silent && \
     npm cache clean --force
 
 # Copy configuration files
@@ -33,9 +33,9 @@ COPY tailwind.config.js ./
 COPY postcss.config.js ./
 COPY index.html ./
 
-# Copy source code
+# Copy source code and public assets
 COPY src/ ./src/
-RUN mkdir -p public
+COPY public/ ./public/
 
 # Build the application
 RUN npm run build

@@ -269,7 +269,11 @@ class AutoExportService:
         
         # Create filename
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        session_name = db_session.session_name.replace(" ", "_") if db_session.session_name else "Session"
+        # Sanitize session name for filename - replace invalid characters
+        session_name = db_session.session_name if db_session.session_name else "Session"
+        # Replace invalid filename characters with underscores
+        import re
+        session_name = re.sub(r'[<>:"/\\|?*]', '_', session_name).replace(' ', '_')
         filename = f"Exceptions_{session_name}_{session_id[:8]}_{timestamp}.csv"
         
         # Save file

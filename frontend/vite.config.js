@@ -3,7 +3,19 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue({
+    template: {
+      compilerOptions: {
+        // Disable HMR in production builds
+        isProduction: process.env.NODE_ENV === 'production'
+      }
+    }
+  })],
+  define: {
+    __VUE_PROD_DEVTOOLS__: false,
+    __VUE_OPTIONS_API__: true,
+    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -25,6 +37,7 @@ export default defineConfig({
     sourcemap: process.env.NODE_ENV === 'development',
     target: 'es2020',
     cssCodeSplit: true,
+    // Ensure clean production build
     rollupOptions: {
       output: {
         manualChunks: {

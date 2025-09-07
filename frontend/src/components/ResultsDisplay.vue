@@ -426,84 +426,139 @@ const selectedEmployee = ref(null)
 const sessionSummary = computed(() => results.value?.session_summary)
 
 const employees = computed(() => {
-  if (!results.value?.employees) return []
+  try {
+    if (!results.value?.employees) return []
 
-  let filtered = results.value.employees
+    let filtered = results.value.employees
 
-  // Apply search filter
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase().trim()
-    filtered = filtered.filter(
-      emp =>
-        emp.employee_name?.toLowerCase().includes(query) ||
-        emp.employee_id?.toLowerCase().includes(query) ||
-        emp.department?.toLowerCase().includes(query)
-    )
-  }
-
-  // Apply status filter
-  if (statusFilter.value !== 'all') {
-    filtered = filtered.filter(
-      emp => emp.validation_status === statusFilter.value
-    )
-  }
-
-  // Apply sorting
-  filtered.sort((a, b) => {
-    switch (sortBy.value) {
-      case 'name':
-        return (a.employee_name || '').localeCompare(b.employee_name || '')
-      case 'department':
-        return (a.department || '').localeCompare(b.department || '')
-      case 'amount':
-        return (b.car_amount || 0) - (a.car_amount || 0)
-      case 'variance': {
-        const varianceA = Math.abs(
-          (a.car_amount || 0) - (a.receipt_amount || 0)
-        )
-        const varianceB = Math.abs(
-          (b.car_amount || 0) - (b.receipt_amount || 0)
-        )
-        return varianceB - varianceA
-      }
-      case 'status':
-        return (a.validation_status || '').localeCompare(
-          b.validation_status || ''
-        )
-      default:
-        return 0
+    // Apply search filter
+    if (searchQuery.value.trim()) {
+      const query = searchQuery.value.toLowerCase().trim()
+      filtered = filtered.filter(
+        emp => {
+          try {
+            return emp.employee_name?.toLowerCase().includes(query) ||
+                   emp.employee_id?.toLowerCase().includes(query) ||
+                   emp.department?.toLowerCase().includes(query)
+          } catch (e) {
+            console.warn('Error filtering employee:', emp, e)
+            return false
+          }
+        }
+      )
     }
-  })
 
-  return filtered
+    // Apply status filter
+    if (statusFilter.value !== 'all') {
+      filtered = filtered.filter(
+        emp => {
+          try {
+            return emp.validation_status === statusFilter.value
+          } catch (e) {
+            console.warn('Error status filtering employee:', emp, e)
+            return false
+          }
+        }
+      )
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      try {
+        switch (sortBy.value) {
+          case 'name':
+            return (a.employee_name || '').localeCompare(b.employee_name || '')
+          case 'department':
+            return (a.department || '').localeCompare(b.department || '')
+          case 'amount':
+            return (b.car_amount || 0) - (a.car_amount || 0)
+          case 'variance': {
+            const varianceA = Math.abs(
+              (a.car_amount || 0) - (a.receipt_amount || 0)
+            )
+            const varianceB = Math.abs(
+              (b.car_amount || 0) - (b.receipt_amount || 0)
+            )
+            return varianceB - varianceA
+          }
+          case 'status':
+            return (a.validation_status || '').localeCompare(
+              b.validation_status || ''
+            )
+          default:
+            return 0
+        }
+      } catch (e) {
+        console.warn('Error sorting employees:', a, b, e)
+        return 0
+      }
+    })
+
+    return filtered
+  } catch (e) {
+    console.error('Error in employees computed property:', e)
+    return []
+  }
 })
 
-const validEmployees = computed(() =>
-  employees.value.filter(emp => emp.validation_status === 'VALID')
-)
+const validEmployees = computed(() => {
+  try {
+    return employees.value.filter(emp => emp?.validation_status === 'VALID')
+  } catch (e) {
+    console.error('Error in validEmployees computed:', e)
+    return []
+  }
+})
 
-const issuesEmployees = computed(() =>
-  employees.value.filter(emp => emp.validation_status === 'NEEDS_ATTENTION')
-)
+const issuesEmployees = computed(() => {
+  try {
+    return employees.value.filter(emp => emp?.validation_status === 'NEEDS_ATTENTION')
+  } catch (e) {
+    console.error('Error in issuesEmployees computed:', e)
+    return []
+  }
+})
 
-const resolvedEmployees = computed(() =>
-  employees.value.filter(emp => emp.validation_status === 'RESOLVED')
-)
+const resolvedEmployees = computed(() => {
+  try {
+    return employees.value.filter(emp => emp?.validation_status === 'RESOLVED')
+  } catch (e) {
+    console.error('Error in resolvedEmployees computed:', e)
+    return []
+  }
+})
 
-const hasIssues = computed(() => issuesEmployees.value.length > 0)
+const hasIssues = computed(() => {
+  try {
+    return issuesEmployees.value.length > 0
+  } catch (e) {
+    console.error('Error in hasIssues computed:', e)
+    return false
+  }
+})
 
 const allIssuesSelected = computed(() => {
-  if (issuesEmployees.value.length === 0) return false
-  return issuesEmployees.value.every(emp =>
-    selectedEmployees.value.includes(emp.revision_id)
-  )
+  try {
+    if (issuesEmployees.value.length === 0) return false
+    return issuesEmployees.value.every(emp =>
+      selectedEmployees.value.includes(emp?.revision_id)
+    )
+  } catch (e) {
+    console.error('Error in allIssuesSelected computed:', e)
+    return false
+  }
 })
 
-const selectedEmployeesData = computed(() =>
-  employees.value.filter(emp =>
-    selectedEmployees.value.includes(emp.revision_id)
-  )
-)
+const selectedEmployeesData = computed(() => {
+  try {
+    return employees.value.filter(emp =>
+      selectedEmployees.value.includes(emp?.revision_id)
+    )
+  } catch (e) {
+    console.error('Error in selectedEmployeesData computed:', e)
+    return []
+  }
+})
 
 const isDeltaSession = computed(() => {
   return results.value?.session_summary?.is_delta_session || false
@@ -544,14 +599,60 @@ async function loadResults() {
   error.value = null
 
   try {
+    console.log('ResultsDisplay: Loading results for session:', props.sessionId)
     const response = await api.getResults(props.sessionId)
+    console.log('ResultsDisplay: Received response:', { 
+      employees: response?.employees?.length || 0, 
+      sessionSummary: !!response?.session_summary 
+    })
+    
+    // Defensive validation of response data
+    if (!response || typeof response !== 'object') {
+      throw new Error('Invalid response data received from API')
+    }
+    
+    // Ensure employees array is valid
+    if (response.employees && !Array.isArray(response.employees)) {
+      console.error('Invalid employees data type:', typeof response.employees)
+      response.employees = []
+    }
+    
+    // Validate each employee record has required fields
+    if (response.employees) {
+      response.employees = response.employees.map((emp, index) => {
+        if (!emp || typeof emp !== 'object') {
+          console.warn(`Invalid employee at index ${index}:`, emp)
+          return {
+            revision_id: `invalid-${index}`,
+            employee_name: 'Invalid Data',
+            employee_id: `invalid-${index}`,
+            validation_status: 'NEEDS_ATTENTION'
+          }
+        }
+        
+        // Ensure required fields exist
+        return {
+          revision_id: emp.revision_id || `emp-${index}`,
+          employee_name: emp.employee_name || 'Unknown',
+          employee_id: emp.employee_id || 'Unknown',
+          validation_status: emp.validation_status || 'NEEDS_ATTENTION',
+          department: emp.department || '',
+          car_amount: emp.car_amount || 0,
+          receipt_amount: emp.receipt_amount || 0,
+          ...emp // Keep other properties
+        }
+      })
+    }
+    
     results.value = response
+    console.log('ResultsDisplay: Results set successfully')
 
     // Update session store with results
     sessionStore.setResults(response)
   } catch (err) {
     error.value = err.message
-    console.error('Failed to load results:', err)
+    console.error('ResultsDisplay: Failed to load results:', err)
+    console.error('ResultsDisplay: Error stack:', err.stack)
   } finally {
     isLoading.value = false
   }

@@ -45,6 +45,8 @@ debug-*.png
 debug-*.js
 test-*.png
 test-*.js
+*-test.js
+current-page.png
 *-debug-error.*
 *-error.png
 final-state.png

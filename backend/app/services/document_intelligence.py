@@ -754,7 +754,7 @@ class DocumentProcessor:
                 # Convert from dict format to list format expected by API
                 employees = []
                 for employee_key, employee_info in employee_data.items():
-                    employees.append({
+                    employee_record = {
                         "employee_id": employee_info['employee_id'],
                         "employee_name": employee_info['employee_name'],
                         "card_number": employee_info['card_number'],
@@ -764,7 +764,18 @@ class DocumentProcessor:
                         "maintenance_amount": employee_info['maintenance_total'],
                         "source": "local_pdf_processor",
                         "confidence": 0.95
-                    })
+                    }
+                    
+                    # Add validation status - default to VALID unless specific issues found
+                    from ..models import ValidationStatus
+                    if not employee_info.get('employee_id') or not employee_info.get('employee_name'):
+                        employee_record["validation_status"] = ValidationStatus.NEEDS_ATTENTION
+                        employee_record["validation_flags"] = {"missing_required_fields": True}
+                    else:
+                        employee_record["validation_status"] = ValidationStatus.VALID
+                        employee_record["validation_flags"] = {}
+                    
+                    employees.append(employee_record)
                 
                 logger.info(f"Successfully extracted {len(employees)} employees from CAR document using local processor")
                 return employees
@@ -799,7 +810,7 @@ class DocumentProcessor:
                 # Convert from dict format to list format expected by API
                 employees = []
                 for employee_key, employee_info in employee_data.items():
-                    employees.append({
+                    employee_record = {
                         "employee_id": employee_info['employee_id'],
                         "employee_name": employee_info['employee_name'],
                         "receipt_amount": employee_info['receipt_total'],
@@ -808,7 +819,18 @@ class DocumentProcessor:
                         "entry_count": employee_info['entry_count'],
                         "source": "local_pdf_processor",
                         "confidence": 0.90
-                    })
+                    }
+                    
+                    # Add validation status - default to VALID unless specific issues found
+                    from ..models import ValidationStatus
+                    if not employee_info.get('employee_id') or not employee_info.get('employee_name') or not employee_info.get('receipt_total'):
+                        employee_record["validation_status"] = ValidationStatus.NEEDS_ATTENTION
+                        employee_record["validation_flags"] = {"missing_required_fields": True}
+                    else:
+                        employee_record["validation_status"] = ValidationStatus.VALID
+                        employee_record["validation_flags"] = {}
+                    
+                    employees.append(employee_record)
                 
                 logger.info(f"Successfully extracted {len(employees)} employees from Receipt document using local processor")
                 return employees
@@ -1041,4 +1063,6 @@ def create_document_processor(use_azure: bool = None) -> DocumentProcessor:
     Returns:
         DocumentProcessor instance
     """
-    return DocumentProcessor(use_azure=use_azure)
+    # Convert use_azure to use_local (inverse logic)
+    use_local = not use_azure if use_azure is not None else True
+    return DocumentProcessor(use_local=use_local)
