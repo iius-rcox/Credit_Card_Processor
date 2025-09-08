@@ -34,26 +34,28 @@ class CARProcessor:
         if not fitz:
             raise PDFProcessorError("PyMuPDF (fitz) is not installed. Please install with: pip install PyMuPDF")
         
-        # Regex patterns for CAR document parsing
-        # Updated pattern to match actual document structure
+        # Regex patterns for CAR document parsing (relaxed and more tolerant)
         self.employee_header_pattern = re.compile(
-            r'Employee ID:\s*(\d{6})\s*([A-Z]+(?:[A-Z]+)?)\s*(556735XXXXXX\d{4})',
-            re.MULTILINE
+            r'Employee\s*ID:\s*(?P<emp_id>\d{4,6})\s+'
+            r'(?P<name>[A-Z][A-Za-z\'\- ]{2,})\s+'
+            r'(?P<card>(?:\d{16}|\d{4}(?:[\s\-]?\d{4}){3}|\d{6}[Xx]{4,10}\d{4}))',
+            re.MULTILINE | re.IGNORECASE
         )
         
         self.totals_marker_pattern = re.compile(
-            r'Totals For:\s*(556735XXXXXX\d{4})',
-            re.MULTILINE
+            r'(?:Totals\s+For\s+Card\s+Nbr:?|Totals\s+For:?)\s*'
+            r'(?P<card>(?:\d{16}|\d{4}(?:[\s\-]?\d{4}){3}|\d{6}[Xx]{4,10}\d{4}))',
+            re.MULTILINE | re.IGNORECASE
         )
         
         self.transaction_totals_pattern = re.compile(
-            r'Transaction Totals:\s*\$?([\d,]+\.\d{2})',
-            re.MULTILINE
+            r'(?:Transaction\s+Totals?|Total(?:\s+Amount)?)\s*:?\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+            re.MULTILINE | re.IGNORECASE
         )
         
         self.fuel_maintenance_pattern = re.compile(
-            r'(Fuel|Maintenance)\s+([\d,]+\.\d{2})',
-            re.MULTILINE
+            r'(Fuel|Maintenance)\s*:?\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+            re.MULTILINE | re.IGNORECASE
         )
     
     def parse_car_document(self, pdf_path: str) -> Dict[str, Any]:
@@ -146,10 +148,16 @@ class CARProcessor:
         for old, new in replacements.items():
             text = text.replace(old, new)
         
-        # Clean up whitespace
+        # Normalize whitespace while preserving line breaks for line-anchored regexes
         import re
-        text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single space
-        text = re.sub(r'\n\s*\n', '\n', text)  # Multiple newlines to single newline
+        text = re.sub(r'\r\n?|\u2028|\u2029', '\n', text)
+        def _collapse_spaces_keep_newlines(s: str) -> str:
+            return '\n'.join(
+                re.sub(r'[\t ]+', ' ', line).strip()
+                for line in s.split('\n')
+            )
+        text = _collapse_spaces_keep_newlines(text)
+        text = re.sub(r'\n{2,}', '\n', text)
         
         return text.strip()
     
@@ -306,9 +314,9 @@ class ReceiptProcessor:
             raise PDFProcessorError("PyMuPDF (fitz) is not installed. Please install with: pip install PyMuPDF")
         
         # Regex patterns for Receipt document parsing
-        # Pattern to match employee name (Aaron Cortez format)
+        # Employee name lines: 2-4 words, allow hyphens/apostrophes
         self.employee_name_pattern = re.compile(
-            r'^([A-Z][a-z]+\s+[A-Z][a-z]+)$',
+            r'^\s*([A-Z][A-Za-z\'\-]+(?:\s+[A-Z][A-Za-z\'\-]+){1,3})\s*$',
             re.MULTILINE
         )
         
@@ -318,16 +326,16 @@ class ReceiptProcessor:
             re.MULTILINE
         )
         
-        # Pattern to match standalone amount (line with just digits and optional decimal)
+        # Standalone amount lines with optional $ and cents
         self.amount_line_pattern = re.compile(
-            r'^([\d,]+\.?\d*)$',
+            r'^\s*\$?([\d,]+(?:\.\d{2})?)\s*$',
             re.MULTILINE
         )
         
-        # Pattern to extract expense category
+        # Expense category (case-insensitive)
         self.expense_category_pattern = re.compile(
-            r'(General Expense|Meals & Entertainment|Maintenance|Fuel|Travel|Office Supplies)',
-            re.MULTILINE
+            r'(General\s+Expense|Meals\s*&\s*Entertainment|Maintenance|Fuel|Travel|Office\s+Supplies)',
+            re.MULTILINE | re.IGNORECASE
         )
     
     def parse_receipt_document(self, pdf_path: str) -> Dict[str, Any]:
@@ -384,6 +392,41 @@ class ReceiptProcessor:
         except Exception as e:
             logger.error(f"Failed to process Receipt document {pdf_path}: {str(e)}")
             raise PDFProcessorError(f"Receipt processing failed: {str(e)}")
+    
+    def _normalize_text(self, text: str) -> str:
+        """
+        Normalize text to handle encoding issues and standardize formatting (receipt-specific)
+        Mirrors CAR normalization to avoid AttributeError and ensure consistent parsing.
+        """
+        if not text:
+            return ""
+        try:
+            import unicodedata
+            text = unicodedata.normalize('NFKC', text)
+        except Exception:
+            pass
+        replacements = {
+            '\u2010': '-',
+            '\u2013': '-',
+            '\u2014': '-',
+            '\u2018': "'",
+            '\u2019': "'",
+            '\u201c': '"',
+            '\u201d': '"',
+            '\u00a0': ' ',
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        import re
+        text = re.sub(r'\r\n?|\u2028|\u2029', '\n', text)
+        def _collapse_spaces_keep_newlines(s: str) -> str:
+            return '\n'.join(
+                re.sub(r'[\t ]+', ' ', line).strip()
+                for line in s.split('\n')
+            )
+        text = _collapse_spaces_keep_newlines(text)
+        text = re.sub(r'\n{2,}', '\n', text)
+        return text.strip()
     
     def _extract_receipt_entries(self, full_text: str, page_text_mapping: Dict[int, str]) -> List[Dict[str, Any]]:
         """

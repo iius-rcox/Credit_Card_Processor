@@ -156,7 +156,7 @@ async def export_pvault_csv(
     headers = [
         "Employee_ID",
         "Employee_Name",
-        "Car_Allowance",
+        "Card_Amount",
         "Receipt_Amount",
         "Total_Amount",
         "Validation_Status",

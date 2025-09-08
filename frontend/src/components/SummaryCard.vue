@@ -192,7 +192,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, useSlots } from 'vue'
+import { ref, computed, watch, useSlots, defineExpose } from 'vue'
 
 // Props
 const props = defineProps({
@@ -324,6 +324,15 @@ const toggleExpanded = () => {
   expanded.value = !expanded.value
 }
 
+// Programmatic control for parent components
+const expand = () => {
+  if (!expanded.value) expanded.value = true
+}
+const collapse = () => {
+  if (expanded.value) expanded.value = false
+}
+defineExpose({ expand, collapse, toggle: toggleExpanded })
+
 // Watch for expand changes
 watch(expanded, (newValue) => {
   emit('expand-change', newValue)
@@ -331,7 +340,7 @@ watch(expanded, (newValue) => {
 
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .summary-card {
   @apply bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden;
 }

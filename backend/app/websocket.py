@@ -197,7 +197,7 @@ class ProcessingNotifier:
             "type": "processing_started",
             "session_id": session_id,
             "config": config,
-            "message": "Document processing started"
+            "message": "Processing documents..."
         })
     
     async def notify_processing_progress(

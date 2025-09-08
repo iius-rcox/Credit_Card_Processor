@@ -534,7 +534,11 @@ def calculate_progress_statistics(session: ProcessingSession, db: Session = None
     if total_employees > 0:
         percent_complete = min(100, int((completed_employees / total_employees) * 100))
     else:
-        percent_complete = 0 if session.status == ModelSessionStatus.PENDING else 100
+        # When total is unknown, only show 100% when explicitly completed
+        if session.status == ModelSessionStatus.COMPLETED:
+            percent_complete = 100
+        else:
+            percent_complete = 0
     
     return {
         'total_employees': total_employees,
@@ -818,7 +822,7 @@ async def get_session_status(
         return SessionStatusResponse(
             session_id=str(db_session.session_id),
             session_name=db_session.session_name,
-            status=db_session.status,
+            status=db_session.status,  # Pydantic Enum serialized to string in schema
             created_by=db_session.created_by,
             created_at=db_session.created_at,
             updated_at=db_session.updated_at,

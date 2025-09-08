@@ -188,14 +188,34 @@ async def process_documents_with_intelligence(
         logger.info(f"Starting merge of employee data - CAR: {len(car_employees)} employees, Receipt: {len(receipt_employees)} employees")
         all_employees = merge_employee_data(car_employees, receipt_employees)
         logger.info(f"Successfully merged employee data - Total employees: {len(all_employees)}")
+
+        # Guard: If no employees detected, fail fast with clear message
+        if len(all_employees) == 0:
+            logger.error(f"No employees detected in CAR / Receipt for session {session_id}. Marking as FAILED.")
+            await update_session_status(db, session_id, SessionStatus.FAILED)
+            await notifier.notify_processing_failed(
+                session_id,
+                "No employees detected in CAR / Receipt. Please verify document formats or regex patterns."
+            )
+            return False
         
         # Check for cancellation BEFORE starting database operations
         if processing_state.get("status") == "cancelled":
             logger.info(f"Processing cancelled before database operations for session {session_id}")
             return False
         
-        # Save employee data to database
+        # Set totals immediately after merge so UI can show determinate progress
         total_employees = len(all_employees)
+        db_session.total_employees = total_employees
+        db_session.processed_employees = 0
+        db.commit()
+
+        # Send initial 0% progress update with known total
+        await notifier.notify_processing_progress(
+            session_id, 0, total_employees, "processing"
+        )
+
+        # Save employee data to database
         logger.info(f"Starting database operations for {total_employees} employees")
         processed_count = 0
         
@@ -210,28 +230,60 @@ async def process_documents_with_intelligence(
             try:
                 # Create employee revision
                 logger.debug(f"Creating EmployeeRevision object for employee {i+1}")
+                # Derive validation flags and status
+                car_amount_val = employee_data.get('car_amount')
+                receipt_amount_val = employee_data.get('receipt_amount')
+                try:
+                    car_amount_f = float(car_amount_val) if car_amount_val is not None else None
+                except (TypeError, ValueError):
+                    car_amount_f = None
+                try:
+                    receipt_amount_f = float(receipt_amount_val) if receipt_amount_val is not None else None
+                except (TypeError, ValueError):
+                    receipt_amount_f = None
+
+                validation_flags = {}
+                needs_attention = False
+
+                # Missing receipts
+                if receipt_amount_f is None or receipt_amount_f <= 0:
+                    validation_flags['missing_receipt'] = True
+                    needs_attention = True
+
+                # Amount mismatch when both present
+                if car_amount_f is not None and receipt_amount_f is not None:
+                    if abs(car_amount_f - receipt_amount_f) > 0.01:
+                        validation_flags['amount_mismatch'] = True
+                        needs_attention = True
+
+                validation_status = ValidationStatus.NEEDS_ATTENTION if needs_attention else ValidationStatus.VALID
                 employee = EmployeeRevision(
                     session_id=session_uuid,
                     employee_id=employee_data.get('employee_id'),
                     employee_name=employee_data.get('employee_name'),
                     car_amount=employee_data.get('car_amount'),
                     receipt_amount=employee_data.get('receipt_amount'),
-                    validation_status=employee_data.get('validation_status', ValidationStatus.VALID),
-                    validation_flags=employee_data.get('validation_flags', {})
+                    validation_status=validation_status,
+                    validation_flags=validation_flags
                 )
                 
                 logger.debug(f"Adding employee {i+1} to database session")
                 db.add(employee)
                 processed_count += 1
                 logger.debug(f"Successfully processed employee {i+1}, total processed: {processed_count}")
-                
+
+                # Update session progress periodically (every 5 employees or on last)
+                if processed_count % 5 == 0 or processed_count == total_employees:
+                    db_session.processed_employees = processed_count
+                    db.commit()
+
             except Exception as emp_error:
                 logger.error(f"ERROR processing employee {i+1} ({employee_data.get('employee_name', 'Unknown')}): {type(emp_error).__name__}: {str(emp_error)}")
                 raise
-            
+
             # Update progress
             percent_complete = int((processed_count / total_employees) * 100)
-            
+
             # Send WebSocket progress update
             await notifier.notify_processing_progress(
                 session_id, processed_count, total_employees, "processing"
@@ -342,43 +394,61 @@ def merge_employee_data(car_employees: List[Dict], receipt_employees: List[Dict]
     Returns:
         Merged list of employee data
     """
-    # Create dictionaries for quick lookup
-    receipt_lookup = {emp.get('employee_id'): emp for emp in receipt_employees}
-    car_lookup = {emp.get('employee_id'): emp for emp in car_employees}
+    # Normalize Employee IDs to digits-only for reliable matching
+    import re
+    def _norm_emp_id(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        norm = re.sub(r"\D+", "", str(value))
+        return norm if norm else None
+
+    # Create dictionaries for quick lookup by normalized Employee ID
+    receipt_lookup = { _norm_emp_id(emp.get('employee_id')): emp for emp in receipt_employees if _norm_emp_id(emp.get('employee_id')) }
+    car_lookup = { _norm_emp_id(emp.get('employee_id')): emp for emp in car_employees if _norm_emp_id(emp.get('employee_id')) }
     
     merged_employees = []
     processed_ids = set()
     
     # Process CAR employees first (with potential receipt matches)
     for car_emp in car_employees:
-        employee_id = car_emp.get('employee_id')
-        receipt_emp = receipt_lookup.get(employee_id, {})
+        raw_emp_id = car_emp.get('employee_id')
+        employee_id = _norm_emp_id(raw_emp_id)
+        receipt_emp = receipt_lookup.get(employee_id) if employee_id else None
+        if not receipt_emp:
+            receipt_emp = {}
         
-        # Merge data with CAR taking priority for basic info
+        # Merge data with CAR taking priority for identity; use standard keys from processors
+        car_amount = car_emp.get('car_amount') if isinstance(car_emp, dict) else None
+        receipt_amount = receipt_emp.get('receipt_amount') if isinstance(receipt_emp, dict) else None
+
         merged_emp = {
             'employee_id': employee_id,
             'employee_name': car_emp.get('employee_name', receipt_emp.get('employee_name')),
             'department': car_emp.get('department', receipt_emp.get('department')),
             'position': car_emp.get('position', receipt_emp.get('position')),
-            'amount': car_emp.get('amount', receipt_emp.get('amount')),
+            'car_amount': car_amount,
+            'receipt_amount': receipt_amount,
             'car_data': car_emp,
             'receipt_data': receipt_emp,
             'validation_status': ValidationStatus.VALID
         }
-        
-        # Basic validation
-        if not merged_emp['employee_name'] or not merged_emp['amount']:
+
+        # Basic validation: require a name and at least one amount > 0
+        if (not merged_emp['employee_name'] or
+                ((merged_emp['car_amount'] is None or float(merged_emp['car_amount']) <= 0) and
+                 (merged_emp['receipt_amount'] is None or float(merged_emp['receipt_amount']) <= 0))):
             merged_emp['validation_status'] = ValidationStatus.NEEDS_ATTENTION
         
         merged_employees.append(merged_emp)
-        processed_ids.add(employee_id)
+        if employee_id:
+            processed_ids.add(employee_id)
     
     # Process receipt-only employees (not found in CAR)
     for receipt_emp in receipt_employees:
-        employee_id = receipt_emp.get('employee_id')
+        employee_id = _norm_emp_id(receipt_emp.get('employee_id'))
         
         # Skip if already processed from CAR data
-        if employee_id in processed_ids:
+        if employee_id and employee_id in processed_ids:
             continue
             
         # Create receipt-only employee record
@@ -387,15 +457,12 @@ def merge_employee_data(car_employees: List[Dict], receipt_employees: List[Dict]
             'employee_name': receipt_emp.get('employee_name'),
             'department': receipt_emp.get('department'),
             'position': receipt_emp.get('position'),
-            'amount': receipt_emp.get('amount'),
+            'car_amount': None,
+            'receipt_amount': receipt_emp.get('receipt_amount'),
             'car_data': {},
             'receipt_data': receipt_emp,
             'validation_status': ValidationStatus.NEEDS_ATTENTION  # Receipt-only needs attention
         }
-        
-        # Basic validation
-        if not merged_emp['employee_name'] or not merged_emp['amount']:
-            merged_emp['validation_status'] = ValidationStatus.NEEDS_ATTENTION
         
         merged_employees.append(merged_emp)
     
@@ -515,6 +582,11 @@ async def process_session(session_id: str, config: Dict[str, Any], db_url: str):
                 f"Enhanced processing failed with error: {str(e)}"
             )
             await update_session_status(db, session_id, SessionStatus.FAILED)
+            # Also notify clients immediately about the failure
+            try:
+                await notifier.notify_processing_failed(session_id, str(e))
+            except Exception:
+                pass
         
         raise
         

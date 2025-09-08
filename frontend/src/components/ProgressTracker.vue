@@ -28,8 +28,19 @@
       <!-- Main Progress Bar -->
       <div class="space-y-4">
         <div class="relative">
-          <!-- Primary Progress Bar -->
-          <div class="w-full bg-gray-200 rounded-full h-6 overflow-hidden">
+          <!-- Indeterminate Progress (when total unknown) -->
+          <div
+            v-if="progress.isIndeterminate"
+            class="w-full bg-gray-200 rounded-full h-6 overflow-hidden"
+          >
+            <div class="h-6 bg-blue-500 rounded-full animate-pulse" style="width: 60%;"></div>
+          </div>
+
+          <!-- Determinate Progress (when total known) -->
+          <div
+            v-else
+            class="w-full bg-gray-200 rounded-full h-6 overflow-hidden"
+          >
             <div
               :class="[
                 'h-6 rounded-full transition-all duration-500 ease-out',
@@ -58,12 +69,21 @@
               ></div>
             </div>
           </div>
-          <!-- Progress percentage overlay -->
-          <div class="absolute inset-0 flex items-center justify-center">
+
+          <!-- Progress percentage overlay (only for determinate) -->
+          <div
+            v-if="!progress.isIndeterminate"
+            class="absolute inset-0 flex items-center justify-center"
+          >
             <span class="text-sm font-semibold text-white drop-shadow-sm">
               {{ progress.progressPercentage }}%
             </span>
           </div>
+        </div>
+
+        <!-- Progress Counters -->
+        <div class="text-center text-gray-600 text-sm">
+          {{ progress.progressCounters }}
         </div>
 
         <!-- Progress Status and Time -->

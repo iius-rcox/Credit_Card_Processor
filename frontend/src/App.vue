@@ -703,13 +703,60 @@ function handleViewAllIssues(options) {
 /**
  * Handle export ready from SummaryResults
  */
-function handleExportReady(options) {
+async function handleExportReady(options) {
   if (options.type === 'pvault') {
-    downloadPvaultCSV()
+    await downloadPvaultCSV()
   } else {
-    // Show available exports
-    handleDownloadResults({ hasFiles: true, fileCount: 2 })
+    await handleDownloadResults({ hasFiles: true, fileCount: 2 })
   }
+}
+
+// Helper to present export options and trigger downloads
+async function handleDownloadResults() {
+  try {
+    notificationStore.addInfo('Choose an export to download', {
+      title: 'Exports',
+      actions: [
+        {
+          label: 'Follow-up Excel',
+          handler: async () => {
+            try {
+              const { blob, filename } = await api.exportFollowup(sessionStore.sessionId)
+              downloadBlob(blob, filename)
+              notificationStore.addSuccess('Follow-up Excel downloaded')
+            } catch (err) {
+              notificationStore.addError('Failed to download Follow-up Excel')
+              console.error(err)
+            }
+          }
+        },
+        {
+          label: 'Issues PDF',
+          handler: async () => {
+            try {
+              const { blob, filename } = await api.exportIssues(sessionStore.sessionId)
+              downloadBlob(blob, filename)
+              notificationStore.addSuccess('Issues PDF downloaded')
+            } catch (err) {
+              notificationStore.addError('Failed to download Issues PDF')
+              console.error(err)
+            }
+          }
+        }
+      ]
+    })
+  } catch (e) {
+    console.error('handleDownloadResults error:', e)
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'export'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 </script>
 

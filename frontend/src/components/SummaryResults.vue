@@ -2,6 +2,7 @@
   <div class="summary-results">
     <!-- Main Processing Summary -->
     <SummaryCard
+      ref="summaryCardRef"
       :title="summaryTitle"
       :subtitle="summarySubtitle"
       :primary-metrics="primaryMetrics"
@@ -124,6 +125,7 @@ const loading = ref(false)
 const summary = ref({})
 const exceptions = ref([])
 const expandedCategories = ref([])
+const summaryCardRef = ref(null)
 
 // Services
 const api = useApi()
@@ -433,6 +435,8 @@ const handleMetricClick = (metric) => {
       break
     case 'issues':
       if (metric.value > 0) {
+        try { summaryCardRef.value?.expand?.() } catch (e) {}
+        loadExceptions()
         emit('view-all-issues', metric)
       }
       break
@@ -445,13 +449,15 @@ const handleActionClick = (action) => {
       emit('export-ready', { type: 'pvault' })
       break
     case 'view-issues':
+      try { summaryCardRef.value?.expand?.() } catch (e) {}
+      loadExceptions()
       emit('view-all-issues', { type: 'all' })
       break
   }
 }
 
 const handleExpandChange = (expanded) => {
-  if (expanded && hasIssues.value) {
+  if (expanded) {
     loadExceptions()
   }
 }

@@ -1,5 +1,6 @@
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { useApi } from './useApi.js'
+import { useSessionStore } from '@/stores/session'
 
 /**
  * Progress tracking composable for monitoring processing status
@@ -11,6 +12,7 @@ import { useApi } from './useApi.js'
  */
 export function useProgress(options = {}) {
   const { getProcessingStatus } = useApi()
+  const sessionStore = useSessionStore()
 
   const isPolling = ref(false)
   const pollingInterval = ref(null)
@@ -27,11 +29,33 @@ export function useProgress(options = {}) {
     session_name: null,
   })
 
-  // Removed unused currentEmployee and statistics refs
+  // Progress counters for determinate/indeterminate display
+  const totalEmployees = ref(0)
+  const completedEmployees = ref(0)
 
   const estimatedTimeRemaining = ref(null)
   const recentActivities = ref([])
   const processingStartTime = ref(null)
+
+  // Sync status with real-time WebSocket-driven session store
+  // Initialize from store on composable creation
+  if (sessionStore?.processingStatus) {
+    status.value = sessionStore.processingStatus
+  }
+
+  // React to future changes pushed via WebSocket
+  watch(
+    () => sessionStore.processingStatus,
+    (newStatus) => {
+      if (!newStatus) return
+      status.value = newStatus
+      lastUpdated.value = new Date()
+      if (newStatus === 'processing' && !processingStartTime.value) {
+        processingStartTime.value = new Date()
+      }
+    },
+    { immediate: false }
+  )
 
   // Polling configuration - supports customization while maintaining 5-second default
   const DEFAULT_POLLING_INTERVAL = 5000 // 5 seconds as required by Task 5.2
@@ -178,10 +202,17 @@ export function useProgress(options = {}) {
     }
 
     status.value = response.status || 'idle'
-    // Ensure progress is always a valid number between 0 and 100
-    const progressValue = response.percent_complete
-    if (typeof progressValue === 'number' && !isNaN(progressValue)) {
-      progress.value = Math.max(0, Math.min(100, progressValue))
+
+    // Update employee counters
+    totalEmployees.value = response.total_employees ?? 0
+    completedEmployees.value = response.completed_employees ?? 0
+
+    // Use backend's percent_complete when available, otherwise calculate from counters
+    if (typeof response.percent_complete === 'number' && !isNaN(response.percent_complete)) {
+      progress.value = Math.max(0, Math.min(100, response.percent_complete))
+    } else if (totalEmployees.value > 0) {
+      // Fallback calculation from counters
+      progress.value = Math.max(0, Math.min(100, Math.round((completedEmployees.value / totalEmployees.value) * 100)))
     } else {
       progress.value = 0
     }
@@ -286,9 +317,29 @@ export function useProgress(options = {}) {
 
   const isComplete = computed(() => status.value === 'completed')
   const hasError = computed(() => !!error.value || status.value === 'error')
+
+  // Progress display logic
+  const isIndeterminate = computed(() => {
+    return status.value === 'processing' && totalEmployees.value === 0
+  })
+
   const progressPercentage = computed(() =>
     Math.max(0, Math.min(100, progress.value))
   )
+
+  const progressCounters = computed(() => {
+    if (totalEmployees.value > 0) {
+      return `${completedEmployees.value} of ${totalEmployees.value}`
+    } else if (completedEmployees.value > 0) {
+      return `${completedEmployees.value} processed (total unknown)`
+    } else if (status.value === 'processing') {
+      return 'Analyzing documents...'
+    } else if (status.value === 'idle') {
+      return 'Ready to process'
+    } else {
+      return ''
+    }
+  })
 
   const statusLabel = computed(() => {
     const labels = {
@@ -390,7 +441,9 @@ export function useProgress(options = {}) {
     error,
     lastUpdated,
     sessionInfo,
-    // Removed unused: currentEmployee, statistics
+    // Progress counters
+    totalEmployees,
+    completedEmployees,
     estimatedTimeRemaining,
     recentActivities,
     processingStartTime,
@@ -399,7 +452,9 @@ export function useProgress(options = {}) {
     isProcessing,
     isComplete,
     hasError,
+    isIndeterminate,
     progressPercentage,
+    progressCounters,
     statusLabel,
     progressColor,
     processingDuration,

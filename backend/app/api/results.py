@@ -163,7 +163,7 @@ def _get_employee_delta_info(employee: EmployeeRevision, session: ProcessingSess
     return {"delta_change": None, "delta_previous_values": None}
 
 
-@router.get("/{session_id}/exceptions", response_model=SessionResultsResponse)
+@router.get("/{session_id}/exceptions", response_model=Dict[str, Any])
 async def get_session_exceptions(
     session_id: str = Path(..., description="Session UUID"),
     issue_type: Optional[str] = Query(None, description="Filter by issue type (missing_receipts, coding_issues, data_mismatches)"),
@@ -268,47 +268,42 @@ async def get_session_exceptions(
         # Apply pagination
         employees = employees_query.offset(offset).limit(limit).all()
         
-        # Convert to response format with issue categorization
+        # Convert to simple dicts expected by frontend ExpandableEmployeeList
         employees_data = []
         for emp in employees:
-            emp_data = EmployeeResultsResponse(
-                revision_id=str(emp.revision_id),
-                employee_id=emp.employee_id,
-                employee_name=emp.employee_name or "Unknown",
-                car_amount=float(emp.car_amount) if emp.car_amount else None,
-                receipt_amount=float(emp.receipt_amount) if emp.receipt_amount else None,
-                validation_status=emp.validation_status.value,
-                validation_flags=emp.validation_flags or {},
-                resolved_by=emp.resolved_by,
-                resolution_notes=emp.resolution_notes,
-                created_at=emp.created_at,
-                updated_at=emp.updated_at
-            )
-            
-            # Add issue categorization
-            emp_data.validation_flags["issue_category"] = _categorize_employee_issues(emp)
-            emp_data.validation_flags["required_action"] = _get_required_action(emp)
-            
-            employees_data.append(emp_data)
+            issue_category = _categorize_employee_issues(emp)
+            employees_data.append({
+                "revision_id": str(emp.revision_id),
+                "employee_id": emp.employee_id,
+                "employee_name": emp.employee_name or "Unknown",
+                "car_amount": float(emp.car_amount) if emp.car_amount else None,
+                "receipt_amount": float(emp.receipt_amount) if emp.receipt_amount else None,
+                "validation_status": emp.validation_status.value,
+                "validation_flags": emp.validation_flags or {},
+                "issue_category": issue_category,
+                "required_action": _get_required_action(emp),
+                "created_at": emp.created_at.isoformat() if emp.created_at else None,
+                "updated_at": emp.updated_at.isoformat() if emp.updated_at else None
+            })
         
         # Calculate summary statistics focused on issues
         issue_stats = _calculate_issue_statistics(db, session_uuid)
         
-        return SessionResultsResponse(
-            session_id=session_id,
-            session_name=db_session.session_name,
-            session_status=db_session.status.value,
-            employees=employees_data,
-            total_count=total_count,
-            returned_count=len(employees_data),
-            summary_statistics=issue_stats,
-            processing_metadata={
+        return {
+            "session_id": session_id,
+            "session_name": db_session.session_name,
+            "session_status": db_session.status.value,
+            "employees": employees_data,
+            "total_count": total_count,
+            "returned_count": len(employees_data),
+            "summary_statistics": issue_stats.model_dump() if hasattr(issue_stats, 'model_dump') else issue_stats.dict(),
+            "processing_metadata": {
                 "last_updated": db_session.updated_at.isoformat() if db_session.updated_at else None,
                 "processing_completed": db_session.status == SessionStatus.COMPLETED,
                 "filter_applied": "exceptions_only",
                 "issue_type_filter": issue_type or "all_issues"
             }
-        )
+        }
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid session ID: {str(e)}")
@@ -446,19 +441,28 @@ def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStat
         )
     ).count()
     
-    issues_count = total_employees - ready_count
+    # Needs attention: employees flagged or with missing / zero receipts
+    needs_attention = db.query(EmployeeRevision).filter(
+        and_(
+            EmployeeRevision.session_id == session_uuid,
+            or_(
+                EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+                EmployeeRevision.receipt_amount.is_(None),
+                EmployeeRevision.receipt_amount <= 0
+            )
+        )
+    ).count()
     
     # Calculate resolved issues (those with RESOLVED validation status)
     resolved_count = db.query(EmployeeRevision).filter(
         EmployeeRevision.session_id == session_uuid,
-        EmployeeRevision.is_current == True,
         EmployeeRevision.validation_status == ValidationStatus.RESOLVED
     ).count()
     
     return SessionSummaryStats(
         total_employees=total_employees,
         ready_for_export=ready_count,
-        needs_attention=issues_count,
+        needs_attention=needs_attention,
         resolved_issues=resolved_count,
         validation_success_rate=round((ready_count / total_employees) * 100, 1) if total_employees > 0 else 0.0
     )
@@ -470,8 +474,7 @@ def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, 
     
     # Calculate actual issues breakdown from validation_flags JSON column
     base_query = db.query(EmployeeRevision).filter(
-        EmployeeRevision.session_id == session_uuid,
-        EmployeeRevision.is_current == True
+        EmployeeRevision.session_id == session_uuid
     )
     
     # Count specific validation flag issues using proper JSON syntax
@@ -484,7 +487,7 @@ def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, 
     ).count()
     
     data_mismatches = base_query.filter(
-        func.json_extract(EmployeeRevision.validation_flags, '$.data_mismatch') == 'true'
+        func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true'
     ).count()
     
     return {
