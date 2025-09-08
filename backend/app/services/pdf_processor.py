@@ -73,12 +73,28 @@ class CARProcessor:
             full_text = ""
             page_text_mapping = {}
             
-            # Extract text from all pages
+            # Extract text from all pages with proper encoding handling
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                page_text = page.get_text()
-                page_text_mapping[page_num + 1] = page_text  # 1-indexed pages
-                full_text += f"\n--- PAGE {page_num + 1} ---\n" + page_text
+                # Use "dict" option for better text extraction with formatting and encoding preservation
+                page_text = page.get_text("dict")
+                
+                # Extract text from blocks and spans with proper encoding
+                extracted_text = ""
+                for block in page_text.get("blocks", []):
+                    if "lines" in block:  # Text block
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text = span.get("text", "")
+                                # Ensure proper Unicode handling and normalize whitespace
+                                if text.strip():
+                                    extracted_text += text + " "
+                            extracted_text += "\n"  # Line break
+                    
+                # Clean and normalize the text
+                extracted_text = self._normalize_text(extracted_text)
+                page_text_mapping[page_num + 1] = extracted_text  # 1-indexed pages
+                full_text += f"\n--- PAGE {page_num + 1} ---\n" + extracted_text
             
             doc.close()
             
@@ -99,6 +115,43 @@ class CARProcessor:
         except Exception as e:
             logger.error(f"Failed to process CAR document {pdf_path}: {str(e)}")
             raise PDFProcessorError(f"CAR processing failed: {str(e)}")
+    
+    def _normalize_text(self, text: str) -> str:
+        """
+        Normalize text to handle encoding issues and standardize formatting
+        """
+        if not text:
+            return ""
+        
+        # Handle common encoding issues
+        try:
+            # Ensure proper Unicode normalization
+            import unicodedata
+            text = unicodedata.normalize('NFKC', text)
+        except:
+            pass
+        
+        # Replace common problematic characters
+        replacements = {
+            '\u2010': '-',  # hyphen to ASCII hyphen
+            '\u2013': '-',  # en dash to ASCII hyphen
+            '\u2014': '-',  # em dash to ASCII hyphen
+            '\u2018': "'",  # left single quote to ASCII apostrophe
+            '\u2019': "'",  # right single quote to ASCII apostrophe
+            '\u201c': '"',  # left double quote to ASCII quote
+            '\u201d': '"',  # right double quote to ASCII quote
+            '\u00a0': ' ',  # non-breaking space to regular space
+        }
+        
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        
+        # Clean up whitespace
+        import re
+        text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single space
+        text = re.sub(r'\n\s*\n', '\n', text)  # Multiple newlines to single newline
+        
+        return text.strip()
     
     def _extract_employee_sections(self, full_text: str, page_text_mapping: Dict[int, str]) -> List[Dict[str, Any]]:
         """
@@ -294,12 +347,28 @@ class ReceiptProcessor:
             full_text = ""
             page_text_mapping = {}
             
-            # Extract text from all pages
+            # Extract text from all pages with proper encoding handling
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                page_text = page.get_text()
-                page_text_mapping[page_num + 1] = page_text  # 1-indexed pages
-                full_text += f"\n--- PAGE {page_num + 1} ---\n" + page_text
+                # Use "dict" option for better text extraction with formatting and encoding preservation
+                page_text = page.get_text("dict")
+                
+                # Extract text from blocks and spans with proper encoding
+                extracted_text = ""
+                for block in page_text.get("blocks", []):
+                    if "lines" in block:  # Text block
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text = span.get("text", "")
+                                # Ensure proper Unicode handling and normalize whitespace
+                                if text.strip():
+                                    extracted_text += text + " "
+                            extracted_text += "\n"  # Line break
+                    
+                # Clean and normalize the text
+                extracted_text = self._normalize_text(extracted_text)
+                page_text_mapping[page_num + 1] = extracted_text  # 1-indexed pages
+                full_text += f"\n--- PAGE {page_num + 1} ---\n" + extracted_text
             
             doc.close()
             

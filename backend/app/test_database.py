@@ -1,10 +1,11 @@
-"""Database functionality test script
+"""Database functionality tests using pytest
 
-This script tests all database models, relationships, and operations
+This module tests all database models, relationships, and operations
 to ensure the schema implementation is working correctly.
 """
 
 import uuid
+import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -17,385 +18,253 @@ from .models import (
 )
 
 
-def test_database_connection():
+@pytest.fixture(scope="function")
+def db_session():
+    """Create a fresh database session for each test"""
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
+@pytest.fixture(scope="function")
+def sample_session(db_session):
+    """Create a sample processing session for tests"""
+    test_session = ProcessingSession(
+        session_name="Test Session",
+        created_by="test_user",
+        status=SessionStatus.PENDING,
+        processing_options={"test": True}
+    )
+    db_session.add(test_session)
+    db_session.commit()
+    db_session.refresh(test_session)
+    return test_session
+
+
+def test_database_connection(db_session):
     """Test basic database connection"""
-    print("Testing database connection...")
-    try:
-        db = SessionLocal()
-        # Execute a simple query
-        result = db.execute(text("SELECT 1")).scalar()
-        assert result == 1
-        db.close()
-        print("✓ Database connection successful")
-        return True
-    except Exception as e:
-        print(f"✗ Database connection failed: {e}")
-        return False
+    # Execute a simple query
+    result = db_session.execute(text("SELECT 1")).scalar()
+    assert result == 1
 
 
-def test_session_creation():
+def test_session_creation(db_session):
     """Test ProcessingSession creation and retrieval"""
-    print("Testing ProcessingSession model...")
-    db = SessionLocal()
+    # Create a new session
+    test_session = ProcessingSession(
+        session_name="Test Session Creation",
+        created_by="test_user",
+        status=SessionStatus.PENDING,
+        processing_options={"test": True}
+    )
     
-    try:
-        # Create a new session
-        test_session = ProcessingSession(
-            session_name="Test Session",
-            created_by="test_user",
-            status=SessionStatus.PENDING,
-            processing_options={"test": True}
-        )
-        
-        db.add(test_session)
-        db.commit()
-        
-        # Retrieve and verify
-        retrieved = db.query(ProcessingSession).filter_by(session_name="Test Session").first()
-        assert retrieved is not None
-        assert retrieved.session_name == "Test Session"
-        assert retrieved.created_by == "test_user"
-        assert retrieved.status == SessionStatus.PENDING
-        assert isinstance(retrieved.session_id, uuid.UUID)
-        assert retrieved.processing_options == {"test": True}
-        
-        # Test enum values
-        retrieved.status = SessionStatus.PROCESSING
-        db.commit()
-        
-        updated = db.query(ProcessingSession).filter_by(session_id=retrieved.session_id).first()
-        assert updated.status == SessionStatus.PROCESSING
-        
-        print("✓ ProcessingSession model working correctly")
-        return retrieved.session_id
-        
-    except Exception as e:
-        print(f"✗ ProcessingSession test failed: {e}")
-        db.rollback()
-        return None
-    finally:
-        db.close()
+    db_session.add(test_session)
+    db_session.commit()
+    
+    # Retrieve and verify
+    retrieved = db_session.query(ProcessingSession).filter_by(session_name="Test Session Creation").first()
+    assert retrieved is not None
+    assert retrieved.session_name == "Test Session Creation"
+    assert retrieved.created_by == "test_user"
+    assert retrieved.status == SessionStatus.PENDING
+    assert isinstance(retrieved.session_id, uuid.UUID)
+    assert retrieved.processing_options == {"test": True}
+    
+    # Test enum values
+    retrieved.status = SessionStatus.PROCESSING
+    db_session.commit()
+    
+    updated = db_session.query(ProcessingSession).filter_by(session_id=retrieved.session_id).first()
+    assert updated.status == SessionStatus.PROCESSING
 
 
-def test_employee_revision(session_id):
+def test_employee_revision(db_session, sample_session):
     """Test EmployeeRevision creation and relationships"""
-    print("Testing EmployeeRevision model...")
-    db = SessionLocal()
+    # Create employee revision
+    revision = EmployeeRevision(
+        session_id=sample_session.session_id,
+        employee_id="TEST001",
+        employee_name="Test Employee",
+        car_amount=Decimal("100.50"),
+        receipt_amount=Decimal("95.75"),
+        validation_status=ValidationStatus.NEEDS_ATTENTION,
+        validation_flags={"amount_mismatch": True, "threshold": 5.0}
+    )
     
-    try:
-        # Create employee revision
-        revision = EmployeeRevision(
-            session_id=session_id,
-            employee_id="TEST001",
-            employee_name="Test Employee",
-            car_amount=Decimal("100.50"),
-            receipt_amount=Decimal("95.75"),
-            validation_status=ValidationStatus.NEEDS_ATTENTION,
-            validation_flags={"amount_mismatch": True, "threshold": 5.0}
-        )
-        
-        db.add(revision)
-        db.commit()
-        
-        # Test relationship
-        session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
-        assert len(session.employee_revisions) == 1
-        assert session.employee_revisions[0].employee_name == "Test Employee"
-        
-        # Test back reference
-        retrieved_revision = db.query(EmployeeRevision).filter_by(employee_id="TEST001").first()
-        assert retrieved_revision.session.session_name == "Test Session"
-        
-        # Test decimal precision
-        assert retrieved_revision.car_amount == Decimal("100.50")
-        assert retrieved_revision.receipt_amount == Decimal("95.75")
-        
-        print("✓ EmployeeRevision model and relationships working correctly")
-        return True
-        
-    except Exception as e:
-        print(f"✗ EmployeeRevision test failed: {e}")
-        db.rollback()
-        return False
-    finally:
-        db.close()
+    db_session.add(revision)
+    db_session.commit()
+    
+    # Test relationship
+    db_session.refresh(sample_session)
+    assert len(sample_session.employee_revisions) == 1
+    assert sample_session.employee_revisions[0].employee_name == "Test Employee"
+    
+    # Test back reference
+    retrieved_revision = db_session.query(EmployeeRevision).filter_by(employee_id="TEST001").first()
+    assert retrieved_revision.session.session_name == "Test Session"
+    
+    # Test decimal precision
+    assert retrieved_revision.car_amount == Decimal("100.50")
+    assert retrieved_revision.receipt_amount == Decimal("95.75")
 
 
-def test_processing_activity(session_id):
+def test_processing_activity(db_session, sample_session):
     """Test ProcessingActivity creation and relationships"""
-    print("Testing ProcessingActivity model...")
-    db = SessionLocal()
+    # Create processing activity
+    activity = ProcessingActivity(
+        session_id=sample_session.session_id,
+        activity_type=ActivityType.VALIDATION,
+        activity_message="Test validation activity",
+        employee_id="TEST001",
+        created_by="test_user"
+    )
     
-    try:
-        # Create activity
-        activity = ProcessingActivity(
-            session_id=session_id,
-            activity_type=ActivityType.VALIDATION,
-            activity_message="Test validation activity",
-            employee_id="TEST001",
-            created_by="test_user"
-        )
-        
-        db.add(activity)
-        db.commit()
-        
-        # Test relationship
-        session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
-        assert len(session.processing_activities) == 1
-        assert session.processing_activities[0].activity_message == "Test validation activity"
-        assert session.processing_activities[0].activity_type == ActivityType.VALIDATION
-        
-        print("✓ ProcessingActivity model working correctly")
-        return True
-        
-    except Exception as e:
-        print(f"✗ ProcessingActivity test failed: {e}")
-        db.rollback()
-        return False
-    finally:
-        db.close()
+    db_session.add(activity)
+    db_session.commit()
+    
+    # Test relationship
+    db_session.refresh(sample_session)
+    assert len(sample_session.processing_activities) == 1
+    assert sample_session.processing_activities[0].activity_message == "Test validation activity"
+    assert sample_session.processing_activities[0].activity_type == ActivityType.VALIDATION
 
 
-def test_file_upload(session_id):
+def test_file_upload(db_session, sample_session):
     """Test FileUpload creation and relationships"""
-    print("Testing FileUpload model...")
-    db = SessionLocal()
+    # Create file upload
+    upload = FileUpload(
+        session_id=sample_session.session_id,
+        file_type=FileType.CAR,
+        original_filename="test_file.pdf",
+        file_path="./data/uploads/test_file.pdf",
+        file_size=1024,
+        checksum="test_checksum_123456789",
+        upload_status=UploadStatus.COMPLETED,
+        uploaded_by="test_user"
+    )
     
-    try:
-        # Create file upload
-        upload = FileUpload(
-            session_id=session_id,
-            file_type=FileType.CAR,
-            original_filename="test_file.pdf",
-            file_path="./data/uploads/test_file.pdf",
-            file_size=1024,
-            checksum="test_checksum_123456789",
-            upload_status=UploadStatus.COMPLETED,
-            uploaded_by="test_user"
-        )
-        
-        db.add(upload)
-        db.commit()
-        
-        # Test relationship
-        session = db.query(ProcessingSession).filter_by(session_id=session_id).first()
-        assert len(session.file_uploads) == 1
-        assert session.file_uploads[0].original_filename == "test_file.pdf"
-        assert session.file_uploads[0].file_type == FileType.CAR
-        
-        print("✓ FileUpload model working correctly")
-        return True
-        
-    except Exception as e:
-        print(f"✗ FileUpload test failed: {e}")
-        db.rollback()
-        return False
-    finally:
-        db.close()
+    db_session.add(upload)
+    db_session.commit()
+    
+    # Test relationship
+    db_session.refresh(sample_session)
+    assert len(sample_session.file_uploads) == 1
+    assert sample_session.file_uploads[0].original_filename == "test_file.pdf"
+    assert sample_session.file_uploads[0].file_type == FileType.CAR
 
 
-def test_foreign_key_constraints():
+def test_foreign_key_constraints(db_session):
     """Test foreign key constraints and cascading deletes"""
-    print("Testing foreign key constraints...")
-    db = SessionLocal()
+    # Create a session with related records
+    test_session = ProcessingSession(
+        session_name="FK Test Session",
+        created_by="test_user"
+    )
+    db_session.add(test_session)
+    db_session.flush()
     
-    try:
-        # Create a session with related records
-        test_session = ProcessingSession(
-            session_name="FK Test Session",
-            created_by="test_user"
-        )
-        db.add(test_session)
-        db.flush()
-        
-        # Add related records
-        revision = EmployeeRevision(
-            session_id=test_session.session_id,
-            employee_name="FK Test Employee"
-        )
-        activity = ProcessingActivity(
-            session_id=test_session.session_id,
-            activity_type=ActivityType.PROCESSING,
-            activity_message="FK test activity",
-            created_by="test_user"
-        )
-        upload = FileUpload(
-            session_id=test_session.session_id,
-            file_type=FileType.RECEIPT,
-            original_filename="fk_test.pdf",
-            file_path="./test/fk_test.pdf",
-            file_size=512,
-            checksum="fk_test_checksum",
-            uploaded_by="test_user"
-        )
-        
-        db.add_all([revision, activity, upload])
-        db.commit()
-        
-        # Verify relationships exist
-        session_check = db.query(ProcessingSession).filter_by(session_name="FK Test Session").first()
-        assert len(session_check.employee_revisions) == 1
-        assert len(session_check.processing_activities) == 1
-        assert len(session_check.file_uploads) == 1
-        
-        # Test cascading delete
-        db.delete(session_check)
-        db.commit()
-        
-        # Verify related records were deleted
-        remaining_revisions = db.query(EmployeeRevision).filter_by(session_id=test_session.session_id).count()
-        remaining_activities = db.query(ProcessingActivity).filter_by(session_id=test_session.session_id).count()
-        remaining_uploads = db.query(FileUpload).filter_by(session_id=test_session.session_id).count()
-        
-        assert remaining_revisions == 0
-        assert remaining_activities == 0
-        assert remaining_uploads == 0
-        
-        print("✓ Foreign key constraints and cascading deletes working correctly")
-        return True
-        
-    except Exception as e:
-        print(f"✗ Foreign key constraint test failed: {e}")
-        db.rollback()
-        return False
-    finally:
-        db.close()
+    # Add related records
+    revision = EmployeeRevision(
+        session_id=test_session.session_id,
+        employee_name="FK Test Employee"
+    )
+    activity = ProcessingActivity(
+        session_id=test_session.session_id,
+        activity_type=ActivityType.PROCESSING,
+        activity_message="FK test activity",
+        created_by="test_user"
+    )
+    upload = FileUpload(
+        session_id=test_session.session_id,
+        file_type=FileType.RECEIPT,
+        original_filename="fk_test.pdf",
+        file_path="./test/fk_test.pdf",
+        file_size=512,
+        checksum="fk_test_checksum",
+        uploaded_by="test_user"
+    )
+    
+    db_session.add_all([revision, activity, upload])
+    db_session.commit()
+    
+    # Verify relationships exist
+    session_check = db_session.query(ProcessingSession).filter_by(session_name="FK Test Session").first()
+    assert len(session_check.employee_revisions) == 1
+    assert len(session_check.processing_activities) == 1
+    assert len(session_check.file_uploads) == 1
+    
+    # Test cascading delete
+    db_session.delete(session_check)
+    db_session.commit()
+    
+    # Verify related records were deleted
+    remaining_revisions = db_session.query(EmployeeRevision).filter_by(session_id=test_session.session_id).count()
+    remaining_activities = db_session.query(ProcessingActivity).filter_by(session_id=test_session.session_id).count()
+    remaining_uploads = db_session.query(FileUpload).filter_by(session_id=test_session.session_id).count()
+    
+    assert remaining_revisions == 0
+    assert remaining_activities == 0
+    assert remaining_uploads == 0
 
 
-def test_indexes_performance():
+def test_indexes_performance(db_session):
     """Test that indexes are created and functioning"""
-    print("Testing database indexes...")
-    db = SessionLocal()
+    # Check SQLite indexes (basic test)
+    # SQLite stores index information differently than other databases
+    result = db_session.execute(text("SELECT name FROM sqlite_master WHERE type='index'")).fetchall()
+    index_names = [row[0] for row in result]
     
-    try:
-        # Check SQLite indexes (basic test)
-        # SQLite stores index information differently than other databases
-        result = db.execute(text("SELECT name FROM sqlite_master WHERE type='index'")).fetchall()
-        index_names = [row[0] for row in result]
-        
-        # Check for some of our custom indexes
-        expected_indexes = [
-            'idx_session_status_created',
-            'idx_employee_session_status',
-            'idx_activity_session_type',
-            'idx_upload_session_type'
-        ]
-        
-        found_indexes = [idx for idx in expected_indexes if any(idx in name for name in index_names)]
-        
-        if len(found_indexes) > 0:
-            print(f"✓ Found {len(found_indexes)} custom indexes")
-        else:
-            print("! Custom indexes may not be visible in SQLite, but should be functional")
-        
-        return True
-        
-    except Exception as e:
-        print(f"✗ Index test failed: {e}")
-        return False
-    finally:
-        db.close()
+    # Check for some of our custom indexes
+    expected_indexes = [
+        'idx_session_status_created',
+        'idx_employee_session_status',
+        'idx_activity_session_type',
+        'idx_upload_session_type'
+    ]
+    
+    found_indexes = [idx for idx in expected_indexes if any(idx in name for name in index_names)]
+    
+    # Basic assertion - we should have some indexes
+    assert len(index_names) > 0, "No indexes found in database"
 
 
-def test_complex_queries():
+def test_complex_queries(db_session):
     """Test complex queries across relationships"""
-    print("Testing complex queries...")
-    db = SessionLocal()
+    # Query sessions with their employee counts
+    sessions_with_counts = db_session.query(
+        ProcessingSession.session_name,
+        ProcessingSession.total_employees,
+        ProcessingSession.status
+    ).filter(
+        ProcessingSession.status.in_([SessionStatus.COMPLETED, SessionStatus.PROCESSING])
+    ).all()
     
-    try:
-        # Query sessions with their employee counts
-        sessions_with_counts = db.query(
-            ProcessingSession.session_name,
-            ProcessingSession.total_employees,
-            ProcessingSession.status
-        ).filter(
-            ProcessingSession.status.in_([SessionStatus.COMPLETED, SessionStatus.PROCESSING])
-        ).all()
-        
-        # Query employees needing attention with session info
-        employees_needing_attention = db.query(
-            EmployeeRevision.employee_name,
-            EmployeeRevision.validation_status,
-            ProcessingSession.session_name
-        ).join(ProcessingSession).filter(
-            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION
-        ).all()
-        
-        # Query recent activities
-        recent_activities = db.query(
-            ProcessingActivity.activity_message,
-            ProcessingActivity.created_at,
-            ProcessingSession.session_name
-        ).join(ProcessingSession).order_by(
-            ProcessingActivity.created_at.desc()
-        ).limit(10).all()
-        
-        print("✓ Complex queries executed successfully")
-        print(f"  - Found {len(sessions_with_counts)} sessions")
-        print(f"  - Found {len(employees_needing_attention)} employees needing attention")
-        print(f"  - Found {len(recent_activities)} recent activities")
-        return True
-        
-    except Exception as e:
-        print(f"✗ Complex query test failed: {e}")
-        return False
-    finally:
-        db.close()
+    # Query employees needing attention with session info
+    employees_needing_attention = db_session.query(
+        EmployeeRevision.employee_name,
+        EmployeeRevision.validation_status,
+        ProcessingSession.session_name
+    ).join(ProcessingSession).filter(
+        EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION
+    ).all()
+    
+    # Query recent activities
+    recent_activities = db_session.query(
+        ProcessingActivity.activity_message,
+        ProcessingActivity.created_at,
+        ProcessingSession.session_name
+    ).join(ProcessingSession).order_by(
+        ProcessingActivity.created_at.desc()
+    ).limit(10).all()
+    
+    # Basic assertions - queries should execute without error
+    assert sessions_with_counts is not None
+    assert employees_needing_attention is not None
+    assert recent_activities is not None
 
 
-def run_all_tests():
-    """Run all database tests"""
-    print("=" * 60)
-    print("CREDIT CARD PROCESSOR - DATABASE TESTS")
-    print("=" * 60)
-    
-    tests_passed = 0
-    total_tests = 8
-    
-    # Test 1: Database connection
-    if test_database_connection():
-        tests_passed += 1
-    
-    # Test 2: Session creation
-    session_id = test_session_creation()
-    if session_id:
-        tests_passed += 1
-        
-        # Test 3: Employee revision (depends on session)
-        if test_employee_revision(session_id):
-            tests_passed += 1
-        
-        # Test 4: Processing activity (depends on session)
-        if test_processing_activity(session_id):
-            tests_passed += 1
-        
-        # Test 5: File upload (depends on session)
-        if test_file_upload(session_id):
-            tests_passed += 1
-    
-    # Test 6: Foreign key constraints
-    if test_foreign_key_constraints():
-        tests_passed += 1
-    
-    # Test 7: Indexes
-    if test_indexes_performance():
-        tests_passed += 1
-    
-    # Test 8: Complex queries
-    if test_complex_queries():
-        tests_passed += 1
-    
-    print("=" * 60)
-    print(f"TESTS COMPLETED: {tests_passed}/{total_tests} passed")
-    print("=" * 60)
-    
-    if tests_passed == total_tests:
-        print("🎉 All tests passed! Database schema is working correctly.")
-        return True
-    else:
-        print(f"⚠️  {total_tests - tests_passed} tests failed. Please check the issues above.")
-        return False
-
-
-if __name__ == "__main__":
-    run_all_tests()
+# This module contains pytest-compatible database tests.
+# Run with: pytest app/test_database.py -v

@@ -31,15 +31,15 @@ export function useAuth() {
 
   // Security validation for development user header
   const validateDevUser = () => {
+    // Only allow development authentication in development mode on localhost
     if (import.meta.env.DEV && import.meta.env.VITE_DEV_USER) {
-      // Warn if using development authentication
-      console.warn('🚨 DEVELOPMENT MODE: Using simulated Windows authentication with user:', import.meta.env.VITE_DEV_USER)
-      
       // Extra validation to prevent accidental production use
       if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         console.error('🚨 SECURITY WARNING: Development authentication mode detected on non-localhost domain!')
         return false
       }
+      // Warn if using development authentication
+      console.warn('🚨 DEVELOPMENT MODE: Using simulated Windows authentication with user:', import.meta.env.VITE_DEV_USER)
     }
     return true
   }
@@ -61,12 +61,14 @@ export function useAuth() {
     try {
       const response = await fetch(`${apiBase}/auth/current-user`, {
         method: 'GET',
-        credentials: 'include', // Include Windows auth cookies
+        credentials: 'include', // Include Windows auth cookies/headers
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
-          // Development mode header - only if explicitly configured
-          ...(import.meta.env.DEV && import.meta.env.VITE_DEV_USER && {
+          // Development mode header - only in development on localhost
+          ...(import.meta.env.DEV && 
+              import.meta.env.VITE_DEV_USER && 
+              (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && {
             'x-dev-user': import.meta.env.VITE_DEV_USER
           })
         }
@@ -373,8 +375,10 @@ export function useAuthenticatedApi() {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             ...options.headers,
-            // Add dev header if needed - only if explicitly configured
-            ...(import.meta.env.DEV && import.meta.env.VITE_DEV_USER && {
+            // Add dev header if needed - only in development on localhost
+            ...(import.meta.env.DEV && 
+                import.meta.env.VITE_DEV_USER && 
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && {
               'x-dev-user': import.meta.env.VITE_DEV_USER
             })
           }

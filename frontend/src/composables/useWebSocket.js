@@ -20,6 +20,8 @@ export function useWebSocket() {
   const connectionError = ref(null)
   const lastMessage = ref(null)
   const reconnectAttempts = ref(0)
+  const messageQueue = ref([])  // Queue for messages when disconnected
+  const lastSequenceNumber = ref(0)  // Track message sequence for sync
   const connectionMetrics = ref({
     connectedAt: null,
     messagesReceived: 0,
@@ -36,6 +38,7 @@ export function useWebSocket() {
   const RECONNECT_INTERVAL = 3000 // 3 seconds
   const HEARTBEAT_INTERVAL = 30000 // 30 seconds
   const CONNECTION_TIMEOUT = 10000 // 10 seconds
+  const MAX_QUEUE_SIZE = 100 // Maximum messages to queue when disconnected
 
   // Computed
   const wsUrl = computed(() => {
@@ -95,6 +98,17 @@ export function useWebSocket() {
         
         // Send initial ping to confirm connection
         sendMessage({ type: 'ping' })
+        
+        // Request state reconciliation after reconnect
+        if (reconnectAttempts.value > 0) {
+          sendMessage({ 
+            type: 'state_sync_request', 
+            lastSequence: lastSequenceNumber.value 
+          })
+        }
+        
+        // Process any queued messages
+        processQueuedMessages()
         
         // Start heartbeat
         startHeartbeat()
@@ -161,11 +175,48 @@ export function useWebSocket() {
   }
 
   /**
+   * Process queued messages after reconnection
+   */
+  function processQueuedMessages() {
+    if (messageQueue.value.length === 0) return
+    
+    console.log(`Processing ${messageQueue.value.length} queued messages`)
+    const queuedMessages = [...messageQueue.value]
+    messageQueue.value = []
+    
+    // Process queued messages in order
+    queuedMessages.forEach(queuedMessage => {
+      try {
+        handleMessage(queuedMessage)
+      } catch (error) {
+        console.error('Failed to process queued message:', error, queuedMessage)
+      }
+    })
+  }
+
+  /**
    * Send message to WebSocket server
    */
   function sendMessage(message) {
     if (!isConnected.value || !socket.value) {
-      console.warn('Cannot send message: WebSocket not connected')
+      // Queue non-critical messages when disconnected
+      const queueableTypes = ['ping', 'user_interaction', 'status_request']
+      if (queueableTypes.includes(message.type)) {
+        // Implement FIFO queue with size limit to prevent memory exhaustion
+        if (messageQueue.value.length >= MAX_QUEUE_SIZE) {
+          // Remove oldest message to make room
+          messageQueue.value.shift()
+          console.warn('Message queue full, discarded oldest message')
+        }
+        
+        messageQueue.value.push({
+          ...message,
+          queuedAt: Date.now()
+        })
+        console.log('Message queued for later sending:', message.type)
+      } else {
+        console.warn('Cannot send message: WebSocket not connected', message.type)
+      }
       return false
     }
 
@@ -186,6 +237,16 @@ export function useWebSocket() {
     connectionMetrics.value.messagesReceived++
     
     console.log('WebSocket message received:', message.type, message)
+    
+    // Handle sequence validation for ordered messages
+    if (message.sequence && message.sequence <= lastSequenceNumber.value) {
+      console.warn('Received out-of-order message, ignoring:', message.sequence, 'last:', lastSequenceNumber.value)
+      return
+    }
+    
+    if (message.sequence) {
+      lastSequenceNumber.value = message.sequence
+    }
 
     switch (message.type) {
       case 'connection_confirmed':

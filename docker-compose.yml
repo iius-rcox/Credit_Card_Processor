@@ -17,17 +17,21 @@ services:
       - "8001:8001"
     volumes:
       # Mount source code for hot reload
-      - ./backend/app:/app/app:cached
+      - ./backend/app:/app/app
       - ./backend/requirements.txt:/app/requirements.txt:ro
+      # Mount test files for testing
+      - ./backend/tests:/app/tests:ro
+      - ./tests:/app/root_tests:ro
       # Persistent data storage
-      - ./backend/data:/app/data:cached
+      - ./backend/data:/app/data
     env_file:
       - .env
     environment:
-      # Development environment settings
-      - ENVIRONMENT=development
+      # Environment settings - loaded from .env file
+      - ENVIRONMENT=${ENVIRONMENT:-production}
       - DATABASE_URL=sqlite:///./data/database.db
-      - LOG_LEVEL=debug
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DEBUG=${DEBUG:-false}
       
       # Security environment variables (loaded from .env file)
       - ADMIN_USERS=${ADMIN_USERS}
@@ -67,8 +71,8 @@ services:
       - "3000:3000"
     volumes:
       # Mount source code for hot reload
-      - ./frontend/src:/app/src:cached
-      - ./frontend/public:/app/public:cached
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
       - ./frontend/package.json:/app/package.json:ro
       - ./frontend/vite.config.js:/app/vite.config.js:ro
       - ./frontend/tailwind.config.js:/app/tailwind.config.js:ro
@@ -81,8 +85,10 @@ services:
     environment:
       # Vite development settings
       - NODE_ENV=development
+      - DOCKER_ENV=true
       - VITE_API_BASE_URL=http://localhost:8001
       - VITE_APP_TITLE=Credit Card Processor (Dev)
+      - VITE_DEV_USER=${VITE_DEV_USER:-rcox}
       # Enable hot reload
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true

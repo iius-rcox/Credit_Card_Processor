@@ -3,6 +3,7 @@ from typing import Dict, Any
 from datetime import datetime, timezone
 import time
 import asyncio
+import ipaddress
 from collections import defaultdict
 from fastapi import FastAPI, Request, Depends, status, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,10 +55,25 @@ class RateLimiter:
         self.max_requests = max_requests
         self.time_window = time_window
         self.requests = defaultdict(list)
+        self.cleanup_interval = 300  # 5 minutes
+        self.last_cleanup = time.time()
     
     def is_allowed(self, client_ip: str) -> bool:
         """Check if request is allowed for the given client IP"""
         now = time.time()
+        
+        # Trigger periodic cleanup to prevent memory leaks
+        if now - self.last_cleanup > self.cleanup_interval:
+            self._cleanup_inactive_ips(now)
+            
+            # Also cleanup abandoned processing sessions
+            try:
+                from .api.processing import cleanup_abandoned_sessions
+                cleanup_abandoned_sessions()
+            except ImportError:
+                pass  # Processing module may not be available
+            
+            self.last_cleanup = now
         
         # Clean old requests outside the time window
         self.requests[client_ip] = [
@@ -71,6 +87,21 @@ class RateLimiter:
             return True
         
         return False
+    
+    def _cleanup_inactive_ips(self, now: float):
+        """Remove entries for IPs that haven't made requests in over 1 hour"""
+        inactive_threshold = 3600  # 1 hour
+        
+        ips_to_remove = []
+        for ip, request_times in self.requests.items():
+            if request_times and now - max(request_times) > inactive_threshold:
+                ips_to_remove.append(ip)
+        
+        for ip in ips_to_remove:
+            del self.requests[ip]
+        
+        if ips_to_remove:
+            logger.debug(f"Rate limiter cleaned up {len(ips_to_remove)} inactive IP entries")
     
     def get_reset_time(self, client_ip: str) -> int:
         """Get when the rate limit will reset for this IP"""
@@ -151,13 +182,29 @@ async def rate_limit_middleware(request: Request, call_next) -> Response:
     Returns:
         Response object or HTTP 429 Too Many Requests
     """
-    # Get client IP, handling proxy headers
+    # Get client IP, handling proxy headers securely
     client_ip = request.client.host if request.client else "unknown"
     
     # Check for forwarded IP headers (common with reverse proxies)
+    # Only trust forwarded headers if they contain valid IP addresses
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
+        # Parse the first IP in the chain and validate it
+        first_ip = forwarded_for.split(",")[0].strip()
+        try:
+            # Validate that it's a valid IP address
+            ipaddress.ip_address(first_ip)
+            # Only use if it's not a private/reserved IP (unless in development)
+            ip_obj = ipaddress.ip_address(first_ip)
+            if not ip_obj.is_private or settings.environment == "development":
+                client_ip = first_ip
+            else:
+                # Log suspicious private IP in forwarded header
+                logger.warning(f"Private IP in X-Forwarded-For header: {first_ip}")
+        except ValueError:
+            # Invalid IP address in header, log and ignore
+            logger.warning(f"Invalid IP in X-Forwarded-For header: {first_ip}")
+            pass
     
     # Check if request is allowed
     if not rate_limiter.is_allowed(client_ip):
@@ -218,6 +265,11 @@ if not is_testing:
     # Only add TrustedHostMiddleware when not testing to prevent TestClient issues
     # Use trusted hosts from settings for development and docker environments
     allowed_hosts = settings.trusted_hosts if settings.trusted_hosts else ["localhost", "127.0.0.1", "*"]
+    
+    # In development mode, be more permissive with host validation for frontend proxy
+    if os.getenv("ENVIRONMENT", "development").lower() == "development":
+        allowed_hosts.extend(["*"])  # Allow all hosts in development
+    
     app.add_middleware(
         TrustedHostMiddleware, 
         allowed_hosts=allowed_hosts

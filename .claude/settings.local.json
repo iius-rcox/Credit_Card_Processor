@@ -28,7 +28,21 @@
       "Bash(npm test)",
       "Bash(npm test:*)",
       "Bash(npm run test:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(rm:*)",
+      "Bash(open http://localhost:3001)",
+      "Bash(/opt/homebrew/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(/bashes)",
+      "Bash(./test-runner.sh)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run:*)",
+      "Bash(./test-runner.sh:*)",
+      "Bash(cat:*)",
+      "Bash(BACKEND_URL=http://localhost:8001 python3 -m pytest tests/test_authentication.py tests/test_file_upload.py tests/test_export_api.py -v --tb=short)",
+      "Bash(npm audit:*)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "ask": []

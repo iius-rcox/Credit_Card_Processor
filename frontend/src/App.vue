@@ -39,9 +39,8 @@
               layout="header" 
               variant="minimal"
               :show-details="false"
-              :show-admin-access="true"
+              :show-admin-access="false"
               :show-logout="false"
-              @admin-panel-clicked="handleAdminPanel"
               @auth-error="handleAuthError"
             />
           </div>
@@ -151,50 +150,9 @@
         </div>
         
 
-        <!-- Error Display -->
-        <div v-if="sessionStore.hasError" class="notification error">
-          <div class="flex items-center space-x-3">
-            <div class="flex-shrink-0">
-              <svg
-                class="h-5 w-5 text-error-500"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </div>
-            <div>
-              <h4 class="text-body-secondary font-medium text-error-800">Error</h4>
-              <p class="text-body-secondary text-error-700 mt-1">
-                {{ sessionStore.error }}
-              </p>
-              <button
-                @click="sessionStore.setError(null)"
-                class="mt-2 text-small-text text-error-600 hover:text-error-800 underline"
-                aria-label="Dismiss error message"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </main>
 
-      <!-- Footer -->
-      <footer class="bg-white border-t border-neutral-300 mt-8 tablet:mt-12 desktop:mt-xxl">
-        <div class="container-responsive py-4">
-          <p class="text-center text-small-text text-neutral-600">
-            <span class="desktop-only">Credit Card Processor v1.0.0 - Built with Vue 3, Vite & Tailwind CSS</span>
-            <span class="tablet-only">Credit Card Processor v1.0.0</span>
-            <span class="mobile-only">CCP v1.0.0</span>
-          </p>
-        </div>
-      </footer>
     </div>
 
 
@@ -476,20 +434,6 @@ function handleUploadError(data) {
   sessionStore.setError(data.error)
 }
 
-/**
- * Handle admin panel access request
- */
-function handleAdminPanel(user) {
-  console.log('Admin panel access requested for user:', user)
-  
-  // Use notification instead of alert for better accessibility
-  notificationStore.addInfo(`Admin panel access requested for ${user?.username || 'user'}. Feature coming soon!`, {
-    title: 'Admin Panel',
-    duration: 8000
-  })
-  
-  announcements.value = 'Admin panel feature is coming soon'
-}
 
 /**
  * Handle authentication errors

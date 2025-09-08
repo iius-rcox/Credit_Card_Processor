@@ -431,6 +431,18 @@ async function performExport(exportType, apiMethodName) {
       url: blobUrl,
     })
 
+    // Auto-cleanup blob URL after 5 minutes to prevent memory leaks
+    // Users should download within this time window
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(blobUrl)
+        console.debug(`Auto-revoked blob URL for ${result.filename} after 5 minutes`)
+      } catch (e) {
+        // Ignore errors if URL was already revoked
+        console.debug('Blob URL was already revoked or invalid:', e.message)
+      }
+    }, 5 * 60 * 1000) // 5 minutes
+
     // Set completed status
     sessionStore.setExportStatus(exportType, 'completed')
 

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # File size limits
     max_car_file_size_mb: int = 100
-    max_receipt_file_size_gb: int = 300
+    max_receipt_file_size_mb: int = 300  # Fixed: was 300 GB, should be MB
     
     # Processing
     max_employees: int = 100
@@ -126,7 +126,8 @@ class Settings(BaseSettings):
             "development-key",
             "test-key",
             "changeme",
-            "default"
+            "default",
+            "test_secret_key_for_development_only_min32chars"  # Current default key
         ]
         
         if v.lower() in [key.lower() for key in weak_keys]:

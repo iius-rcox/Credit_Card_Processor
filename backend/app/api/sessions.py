@@ -59,10 +59,17 @@ def check_session_access(db_session: ProcessingSession, current_user: UserInfo) 
     if current_user.is_admin:
         return True
     
-    # Extract username from domain format if present
+    # Extract username from domain format if present - fix session hijacking vulnerability
     session_creator = db_session.created_by.lower()
     if '\\' in session_creator:
-        session_creator = session_creator.split('\\')[1]
+        # Use rsplit to handle multiple backslashes correctly (take last part)
+        session_creator = session_creator.split('\\')[-1]
+    
+    # Additional security: validate that username doesn't contain dangerous characters
+    import re
+    if not re.match(r'^[a-zA-Z0-9._-]+$', session_creator):
+        logger.warning(f"Invalid session creator format: {db_session.created_by}")
+        return False
     
     return session_creator == current_user.username.lower()
 
@@ -1080,9 +1087,9 @@ async def split_session_documents(
         receipt_file = None
         
         for file_upload in db_session.file_uploads:
-            if file_upload.file_type == FileType.car:
+            if file_upload.file_type == FileType.CAR:
                 car_file = file_upload
-            elif file_upload.file_type == FileType.receipt:
+            elif file_upload.file_type == FileType.RECEIPT:
                 receipt_file = file_upload
         
         if not car_file or not receipt_file:
@@ -1248,9 +1255,9 @@ async def validate_split_requirements(
         receipt_file = None
         
         for file_upload in db_session.file_uploads:
-            if file_upload.file_type == FileType.car:
+            if file_upload.file_type == FileType.CAR:
                 car_file = file_upload
-            elif file_upload.file_type == FileType.receipt:
+            elif file_upload.file_type == FileType.RECEIPT:
                 receipt_file = file_upload
         
         file_validation = {

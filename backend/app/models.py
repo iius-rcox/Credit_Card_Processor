@@ -40,7 +40,12 @@ class GUID(TypeDecorator):
             return str(value)
         else:
             if not isinstance(value, uuid.UUID):
-                return str(uuid.UUID(value))
+                try:
+                    # Validate UUID format to prevent injection
+                    validated_uuid = uuid.UUID(str(value))
+                    return str(validated_uuid)
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid UUID format: {value}") from e
             else:
                 return str(value)
 
@@ -49,7 +54,11 @@ class GUID(TypeDecorator):
             return value
         else:
             if not isinstance(value, uuid.UUID):
-                return uuid.UUID(value)
+                try:
+                    # Validate UUID format from database
+                    return uuid.UUID(str(value))
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid UUID in database: {value}") from e
             return value
 
 
@@ -140,6 +149,8 @@ class ProcessingSession(Base):
     __table_args__ = (
         Index('idx_session_status_created', 'status', 'created_at'),
         Index('idx_session_created_by_status', 'created_by', 'status'),
+        # Composite index for session listing queries (user filter + status + order by created_at)
+        Index('idx_session_created_by_status_created', 'created_by', 'status', 'created_at'),
     )
     
     def __repr__(self):

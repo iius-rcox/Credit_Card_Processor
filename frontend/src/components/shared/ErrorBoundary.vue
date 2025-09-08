@@ -29,10 +29,10 @@
               <h3 class="font-semibold text-blue-800 mb-2">Debug Information:</h3>
               <div class="text-blue-700 space-y-1">
                 <div><strong>Time:</strong> {{ new Date().toLocaleString() }}</div>
-                <div><strong>Browser:</strong> {{ navigator.userAgent.includes('Safari') ? 'Safari' : 'Other' }}</div>
+                <div><strong>Browser:</strong> {{ getBrowserInfo() }}</div>
                 <div><strong>Error triggered:</strong> {{ errorTriggered }}</div>
                 <div v-if="errorComponentName"><strong>Component:</strong> {{ errorComponentName }}</div>
-                <div><strong>Current URL:</strong> {{ window.location.href }}</div>
+                <div><strong>Current URL:</strong> {{ getCurrentUrl() }}</div>
               </div>
             </div>
             
@@ -401,6 +401,26 @@ function resetError() {
   errorDetails.value = ''
   detailsExpanded.value = false
   retryCount.value = 0
+}
+
+/**
+ * Get browser info safely
+ */
+function getBrowserInfo() {
+  if (typeof window !== 'undefined' && navigator?.userAgent) {
+    return navigator.userAgent.includes('Safari') ? 'Safari' : 'Other'
+  }
+  return 'Unknown'
+}
+
+/**
+ * Get current URL safely
+ */
+function getCurrentUrl() {
+  if (typeof window !== 'undefined' && window.location) {
+    return window.location.href
+  }
+  return 'Unknown'
 }
 
 // Expose methods for parent components

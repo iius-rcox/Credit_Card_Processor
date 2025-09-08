@@ -147,12 +147,19 @@ def extract_windows_username(request: Request) -> Optional[str]:
         - Rate limiting consideration
     """
     # Priority order for Windows authentication headers
+    # Covers various web servers (IIS, Apache, Nginx) and proxy configurations
     auth_headers = [
         'remote_user',          # Standard Windows auth header
         'http_remote_user',     # HTTP version
+        'x-remote-user',        # Common proxy header
         'x-forwarded-user',     # Proxy forwarded user
-        'auth_user',           # Alternative header name
-        'http_x_forwarded_user' # HTTP proxy version
+        'auth_user',           # Alternative header name  
+        'http_x_forwarded_user', # HTTP proxy version
+        'http_x_remote_user',   # HTTP X-Remote-User
+        'x-user',              # Simple X-User header
+        'remote-user',         # Hyphenated version (some proxies use this)
+        'x-authenticated-user', # Extended auth header
+        'http_auth_user'       # HTTP Auth User
     ]
     
     username = None
@@ -258,18 +265,28 @@ async def get_current_user(request: Request) -> UserInfo:
         - Supports development fallback
     """
     try:
-        # Try Windows authentication first
+        # Extract username from Windows authentication headers
         username = extract_windows_username(request)
         auth_method = "windows"
         
-        # Fall back to development authentication if needed
+        # In development mode, allow development authentication fallback
         if not username and settings.debug:
             username = get_development_user(request)
             auth_method = "development"
         
         if not username:
-            auth_logger.error("Authentication failed - no valid username found")
-            raise AuthenticationError("Authentication required")
+            client_ip = request.client.host if request.client else "unknown"
+            auth_logger.error(f"Authentication failed - no valid username found from IP {client_ip}")
+            
+            # Provide more helpful error message in development vs production
+            if settings.debug:
+                raise AuthenticationError(
+                    "Authentication required. In development mode, set 'x-dev-user' header or ensure Windows authentication headers are present."
+                )
+            else:
+                raise AuthenticationError(
+                    "Windows authentication required. Please ensure you are logged in to Windows and accessing through a supported browser."
+                )
         
         # Check if user is admin using secure method (case-insensitive for better security)
         is_admin = settings.is_admin_user(username)
@@ -470,7 +487,7 @@ async def get_current_user_ws(websocket: WebSocket) -> UserInfo:
             raise AuthenticationError("Invalid username format")
         
         # Check if user is admin (same logic as HTTP auth)
-        is_admin = clean_username.lower() in settings.admin_users
+        is_admin = settings.is_admin_user(clean_username)
         
         # Log authentication attempt
         log_authentication_attempt(clean_username, "websocket", True, auth_method)

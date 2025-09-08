@@ -149,302 +149,224 @@ export function createMockResponse(data, status = 200, headers = {}) {
 }
 
 /**
- * Enhanced fetch mock with proper Response object simulation
+ * Enhanced fetch mock that can be easily overridden by tests
+ * This creates a basic mock but allows tests to override specific calls
  */
 export function setupFetchMock() {
-  const fetchMock = vi.fn()
+  // Replace global fetch with a more flexible mock
+  global.fetch = vi.fn()
+  
+  // Return the mock function so tests can configure it
+  const fetchMock = global.fetch
 
+  // Set up default implementation but allow easy overriding
   fetchMock.mockImplementation((url, options) => {
     const method = options?.method || 'GET'
-
-    // Default successful response
-    let responseData = { success: true }
-    let status = 200
-    let headers = {}
-
-    // Route-specific responses with better matching
+    
+    // Default responses - these can be overridden by individual tests
     if (url.includes('/api/auth/current-user')) {
-      responseData = {
+      return Promise.resolve(createMockResponse({
         username: 'testuser',
         is_admin: false,
         display_name: 'Test User',
         roles: ['user'],
         permissions: ['read']
-      }
-    } else if (url.includes('/api/sessions') && method === 'POST') {
-      responseData = mockApiResponses.createSession()
-    } else if (url.includes('/api/sessions/') && url.includes('/upload') && method === 'POST') {
-      const fileType = url.includes('car') ? 'car' : 'receipt'
-      responseData = {
-        uploaded_files: [{
-          checksum: 'abc123',
-          upload_status: 'completed',
-          server_filename: `test-${fileType}.pdf`,
-          processing_status: 'pending'
-        }]
-      }
-    } else if (url.includes('/api/sessions/') && url.includes('/process') && method === 'POST') {
-      responseData = mockApiResponses.startProcessing()
-    } else if (url.includes('/api/sessions/') && url.includes('/status') && method === 'GET') {
-      responseData = {
-        session_id: 'test-session-123',
-        status: 'processing',
-        percent_complete: 50,
-        total_employees: 45,
-        completed_employees: 22,
-        processing_employees: 1,
-        issues_employees: 0,
-        pending_employees: 22,
-        recent_activities: ['Processing employee 22']
-      }
-    } else if (url.includes('/api/sessions/') && url.includes('/results') && method === 'GET') {
-      responseData = mockApiResponses.getResults()
-    } else if (url.includes('/api/export/') && method === 'GET') {
-      // Handle export endpoints
-      headers['content-disposition'] = 'attachment; filename="export.csv"'
-      headers['content-type'] = 'text/csv'
-      responseData = 'CSV data here'
+      }))
     }
-
-    return Promise.resolve(createMockResponse(responseData, status, headers))
+    
+    // Default success response for unknown routes
+    return Promise.resolve(createMockResponse({ success: true }))
   })
-
-  global.fetch = fetchMock
+  
   return fetchMock
 }
 
 /**
- * Create wrapper with common providers
+ * Mock timers utility
  */
-export function createWrapper(component, options = {}) {
-  const pinia = createTestPinia()
+export function mockTimers() {
+  vi.useFakeTimers()
+  
+  return {
+    advance: (ms) => vi.advanceTimersByTime(ms),
+    runAll: () => vi.runAllTimers(),
+    restore: () => vi.useRealTimers(),
+  }
+}
 
-  return mount(component, {
+/**
+ * Flush all promises
+ */
+export async function flushPromises() {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
+/**
+ * Create a mock WebSocket for testing
+ */
+export class MockWebSocket {
+  constructor(url) {
+    this.url = url
+    this.readyState = 1 // OPEN
+    this.onopen = null
+    this.onclose = null
+    this.onmessage = null
+    this.onerror = null
+    
+    // Simulate connection opening
+    setTimeout(() => {
+      if (this.onopen) this.onopen()
+    }, 0)
+  }
+
+  send(data) {
+    // Mock sending data
+    console.log('MockWebSocket send:', data)
+  }
+
+  close() {
+    this.readyState = 3 // CLOSED
+    if (this.onclose) {
+      this.onclose()
+    }
+  }
+
+  // Simulate receiving a message
+  simulateMessage(data) {
+    if (this.onmessage) {
+      this.onmessage({ data: JSON.stringify(data) })
+    }
+  }
+
+  // Simulate an error
+  simulateError(error) {
+    if (this.onerror) {
+      this.onerror(error)
+    }
+  }
+}
+
+/**
+ * Setup WebSocket mock
+ */
+export function setupWebSocketMock() {
+  global.WebSocket = MockWebSocket
+  return MockWebSocket
+}
+
+/**
+ * Create a test wrapper component with proper providers
+ */
+export function createTestWrapper(Component, options = {}) {
+  const pinia = createTestPinia()
+  
+  return mount(Component, {
     global: {
       plugins: [pinia],
-      ...options.global,
+      stubs: {
+        'router-link': {
+          template: '<a><slot /></a>',
+        },
+        'router-view': {
+          template: '<div><slot /></div>',
+        },
+      },
     },
     ...options,
   })
 }
 
 /**
- * Wait for Vue's next tick and any pending promises
+ * Wait for condition helper for async testing
  */
-export async function flushPromises() {
-  await new Promise(resolve => setTimeout(resolve, 0))
-  await new Promise(resolve => process.nextTick(resolve))
-}
-
-/**
- * Simulate drag and drop events
- */
-export function simulateDragDrop(wrapper, files) {
-  const dropEvent = new Event('drop')
-  dropEvent.dataTransfer = {
-    files,
-    types: ['Files'],
-  }
-
-  wrapper.element.dispatchEvent(dropEvent)
-}
-
-/**
- * Enhanced XMLHttpRequest mock for file uploads
- */
-export function createMockXMLHttpRequest() {
-  return class MockXMLHttpRequest {
-    constructor() {
-      this.upload = { addEventListener: vi.fn() }
-      this.addEventListener = vi.fn()
-      this.open = vi.fn()
-      this.setRequestHeader = vi.fn()
-      this.send = vi.fn()
-      this.abort = vi.fn()
-      this.status = 200
-      this.statusText = 'OK'
-      this.responseText = JSON.stringify({
-        uploaded_files: [{
-          checksum: 'abc123',
-          upload_status: 'completed',
-          server_filename: 'test.pdf'
-        }]
-      })
+export function waitFor(conditionFn, timeout = 5000, interval = 50) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now()
+    
+    const check = () => {
+      if (conditionFn()) {
+        resolve()
+        return
+      }
       
-      // Simulate async upload completion
-      this.simulateSuccess = () => {
-        setTimeout(() => {
-          // Trigger progress event
-          const progressCallback = this.upload.addEventListener.mock.calls
-            .find(call => call[0] === 'progress')?.[1]
-          if (progressCallback) {
-            progressCallback({ lengthComputable: true, loaded: 1024, total: 1024 })
-          }
-          
-          // Trigger load event
-          const loadCallback = this.addEventListener.mock.calls
-            .find(call => call[0] === 'load')?.[1]
-          if (loadCallback) {
-            loadCallback()
-          }
-        }, 10)
+      if (Date.now() - startTime >= timeout) {
+        reject(new Error(`Condition not met within ${timeout}ms`))
+        return
+      }
+      
+      setTimeout(check, interval)
+    }
+    
+    check()
+  })
+}
+
+/**
+ * Mock environment variables for testing
+ */
+export function mockEnvVars(vars = {}) {
+  const originalEnv = { ...import.meta.env }
+  
+  Object.keys(vars).forEach(key => {
+    import.meta.env[key] = vars[key]
+  })
+  
+  return () => {
+    // Restore original environment
+    Object.keys(originalEnv).forEach(key => {
+      import.meta.env[key] = originalEnv[key]
+    })
+  }
+}
+
+/**
+ * Create mock for API responses with better error handling
+ */
+export function createApiMock(responses = {}) {
+  const mock = vi.fn()
+  
+  mock.mockImplementation(async (url, options = {}) => {
+    // Check if there's a specific response for this URL+method combo
+    const method = options.method || 'GET'
+    const key = `${method}:${url}`
+    
+    if (responses[key]) {
+      const response = responses[key]
+      if (typeof response === 'function') {
+        return response(url, options)
+      }
+      return response
+    }
+    
+    // Check for URL pattern matches
+    for (const [pattern, response] of Object.entries(responses)) {
+      if (url.includes(pattern)) {
+        if (typeof response === 'function') {
+          return response(url, options)
+        }
+        return response
       }
     }
-  }
-}
-
-/**
- * Enhanced timer mocking for polling tests with async support
- */
-export function mockTimers() {
-  vi.useFakeTimers({ shouldAdvanceTime: true })
-  
-  return {
-    advanceTime: async (ms) => {
-      vi.advanceTimersByTime(ms)
-      // Allow micro tasks to flush
-      await new Promise(resolve => setImmediate(resolve))
-      await flushPromises()
-    },
-    runAllTimers: async () => {
-      await vi.runAllTimersAsync()
-      await flushPromises()
-    },
-    runOnlyPendingTimers: async () => {
-      await vi.runOnlyPendingTimersAsync()
-      await flushPromises()
-    },
-    clearAll: () => {
-      vi.clearAllTimers()
-    },
-    restore: () => {
-      vi.useRealTimers()
-    },
-    getTimerCount: () => vi.getTimerCount()
-  }
-}
-
-/**
- * Wait for async operations with timeout
- */
-export async function waitFor(conditionFn, timeout = 1000, interval = 50) {
-  const startTime = Date.now()
-  
-  while (Date.now() - startTime < timeout) {
-    if (await conditionFn()) {
-      return true
-    }
-    await new Promise(resolve => setTimeout(resolve, interval))
-  }
-  
-  throw new Error(`Condition not met within ${timeout}ms timeout`)
-}
-
-/**
- * Mock the useApi composable with customizable responses
- */
-export function mockUseApi(overrides = {}) {
-  const defaultMock = {
-    request: vi.fn().mockResolvedValue({ success: true }),
-    createSession: vi.fn().mockResolvedValue({ 
-      session_id: 'test-session-123',
-      status: 'idle',
-      created_at: new Date().toISOString()
-    }),
-    getSession: vi.fn().mockResolvedValue({
-      session_id: 'test-session-123',
-      session_name: 'Test Session',
-      status: 'idle',
-      uploaded_files: [],
-    }),
-    uploadFile: vi.fn().mockResolvedValue({ file_id: 'file-123' }),
-    startProcessing: vi.fn().mockResolvedValue({ status: 'processing' }),
-    isLoading: { value: false },
-    error: { value: null },
-    clearErrors: vi.fn(),
-    checkHealth: vi.fn().mockResolvedValue(true),
-    ...overrides,
-  }
-  
-  return defaultMock
-}
-
-/**
- * Mock session store with realistic behavior
- */
-export function createMockSessionStore(overrides = {}) {
-  const store = {
-    // State
-    sessionId: null,
-    currentSession: null,
-    sessions: [],
-    status: 'idle',
-    user: {
-      id: 'test-user',
-      username: 'testuser',
-      email: 'test@example.com',
-      isAdmin: true,
-    },
-    error: null,
-    sessionError: null,
-    isAuthenticated: true,
-    sessionLoading: false,
     
-    // Actions
-    createSession: vi.fn().mockImplementation(async (sessionData) => {
-      const sessionId = 'test-session-' + Date.now()
-      store.sessionId = sessionId
-      store.currentSession = {
-        session_id: sessionId,
-        session_name: sessionData.session_name,
-        status: 'idle',
-        created_at: new Date().toISOString(),
-        ...sessionData,
-      }
-      return sessionId
-    }),
-    switchSession: vi.fn().mockImplementation(async (sessionId) => {
-      store.sessionId = sessionId
-      store.currentSession = {
-        session_id: sessionId,
-        session_name: 'Test Session',
-        status: 'idle',
-        created_at: new Date().toISOString(),
-      }
-    }),
-    clearSession: vi.fn(),
-    clearError: vi.fn().mockImplementation((errorType) => {
-      if (errorType === 'session') {
-        store.sessionError = null
-      } else {
-        store.error = null
-      }
-    }),
-    setError: vi.fn().mockImplementation((error) => {
-      store.error = error
-    }),
-    setSessionError: vi.fn().mockImplementation((error) => {
-      store.sessionError = error
-    }),
-    
-    // Getters
-    hasSession: false,
-    userIsAuthenticated: true,
-    sessionStatus: 'idle',
-    hasError: false,
-    allErrors: [],
-    
-    ...overrides,
-  }
+    // Default success response
+    return createMockResponse({ success: true })
+  })
   
-  return store
+  return mock
 }
 
 /**
- * Simulate user interactions with proper timing
+ * Create a more realistic file upload mock
  */
-export async function simulateUserAction(action) {
-  await action()
-  await flushPromises()
-  return new Promise(resolve => setTimeout(resolve, 10))
+export function createMockFileUpload(filename = 'test.pdf', size = 1024, content = 'mock content') {
+  const file = new File([content], filename, { 
+    type: 'application/pdf',
+    lastModified: Date.now()
+  })
+  
+  // Mock additional file properties
+  Object.defineProperty(file, 'size', { value: size })
+  Object.defineProperty(file, 'path', { value: filename })
+  
+  return file
 }

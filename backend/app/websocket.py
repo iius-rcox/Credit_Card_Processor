@@ -70,6 +70,9 @@ class ConnectionManager:
         
     def disconnect(self, websocket: WebSocket):
         """Remove a WebSocket connection"""
+        session_id = None
+        username = "unknown"
+        
         try:
             # Get session_id for this connection
             metadata = self.connection_metadata.get(websocket, {})
@@ -83,17 +86,22 @@ class ConnectionManager:
                 # Clean up empty session sets
                 if not self.session_connections[session_id]:
                     del self.session_connections[session_id]
-            
-            # Remove from user connections
-            self.user_connections.pop(websocket, None)
-            
-            # Remove metadata
-            self.connection_metadata.pop(websocket, None)
-            
-            logger.info(f"WebSocket disconnected - Session: {session_id}, User: {username}")
-            
+                    
         except Exception as e:
-            logger.error(f"Error disconnecting WebSocket: {e}")
+            logger.error(f"Error during WebSocket disconnect cleanup: {e}")
+            
+        finally:
+            # Always clean up all references to prevent memory leaks
+            try:
+                # Remove from user connections (guaranteed cleanup)
+                self.user_connections.pop(websocket, None)
+                
+                # Remove metadata (guaranteed cleanup)
+                self.connection_metadata.pop(websocket, None)
+                
+                logger.info(f"WebSocket disconnected - Session: {session_id}, User: {username}")
+            except Exception as e:
+                logger.error(f"Error in final WebSocket cleanup: {e}")
     
     async def send_to_connection(self, websocket: WebSocket, data: Dict[str, Any]):
         """Send data to a specific WebSocket connection"""

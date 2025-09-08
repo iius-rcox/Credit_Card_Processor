@@ -79,14 +79,19 @@ def _generate_filename(session_name: str, session_id: str, export_type: str, ext
 
 def _log_export_activity(db: Session, session_id: str, export_type: str, filename: str, username: str):
     """Log export activity to the database"""
-    activity = ProcessingActivity(
-        session_id=session_id,
-        activity_type=ActivityType.EXPORT,
-        activity_message=f"Generated {export_type} export: {filename}",
-        created_by=username
-    )
-    db.add(activity)
-    db.commit()
+    try:
+        activity = ProcessingActivity(
+            session_id=session_id,
+            activity_type=ActivityType.EXPORT,
+            activity_message=f"Generated {export_type} export: {filename}",
+            created_by=username
+        )
+        db.add(activity)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Failed to log export activity: {str(e)}")
+        # Don't raise - logging failure shouldn't break export
 
 
 @router.get("/{session_id}/pvault")

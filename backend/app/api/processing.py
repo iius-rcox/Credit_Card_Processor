@@ -70,6 +70,26 @@ def clear_processing_state(session_id: str):
     _processing_state.pop(session_id, None)
     _processing_locks.pop(session_id, None)
 
+def cleanup_abandoned_sessions():
+    """Clean up processing state for abandoned sessions (older than 24 hours)"""
+    import time
+    current_time = time.time()
+    sessions_to_remove = []
+    
+    for session_id, state in _processing_state.items():
+        start_time = state.get('start_time')
+        if start_time and (current_time - start_time) > 86400:  # 24 hours
+            sessions_to_remove.append(session_id)
+        elif not start_time and state.get('status') == 'idle':
+            # Clean up idle sessions older than 1 hour
+            sessions_to_remove.append(session_id)
+    
+    for session_id in sessions_to_remove:
+        clear_processing_state(session_id)
+        logger.info(f"Cleaned up abandoned session state: {session_id}")
+    
+    return len(sessions_to_remove)
+
 
 def check_session_access(db_session: ProcessingSession, current_user: UserInfo) -> bool:
     """
@@ -168,6 +188,11 @@ async def process_documents_with_intelligence(
         logger.info(f"Starting merge of employee data - CAR: {len(car_employees)} employees, Receipt: {len(receipt_employees)} employees")
         all_employees = merge_employee_data(car_employees, receipt_employees)
         logger.info(f"Successfully merged employee data - Total employees: {len(all_employees)}")
+        
+        # Check for cancellation BEFORE starting database operations
+        if processing_state.get("status") == "cancelled":
+            logger.info(f"Processing cancelled before database operations for session {session_id}")
+            return False
         
         # Save employee data to database
         total_employees = len(all_employees)
@@ -317,11 +342,14 @@ def merge_employee_data(car_employees: List[Dict], receipt_employees: List[Dict]
     Returns:
         Merged list of employee data
     """
-    # Create a dictionary for quick lookup
+    # Create dictionaries for quick lookup
     receipt_lookup = {emp.get('employee_id'): emp for emp in receipt_employees}
+    car_lookup = {emp.get('employee_id'): emp for emp in car_employees}
     
     merged_employees = []
+    processed_ids = set()
     
+    # Process CAR employees first (with potential receipt matches)
     for car_emp in car_employees:
         employee_id = car_emp.get('employee_id')
         receipt_emp = receipt_lookup.get(employee_id, {})
@@ -336,6 +364,33 @@ def merge_employee_data(car_employees: List[Dict], receipt_employees: List[Dict]
             'car_data': car_emp,
             'receipt_data': receipt_emp,
             'validation_status': ValidationStatus.VALID
+        }
+        
+        # Basic validation
+        if not merged_emp['employee_name'] or not merged_emp['amount']:
+            merged_emp['validation_status'] = ValidationStatus.NEEDS_ATTENTION
+        
+        merged_employees.append(merged_emp)
+        processed_ids.add(employee_id)
+    
+    # Process receipt-only employees (not found in CAR)
+    for receipt_emp in receipt_employees:
+        employee_id = receipt_emp.get('employee_id')
+        
+        # Skip if already processed from CAR data
+        if employee_id in processed_ids:
+            continue
+            
+        # Create receipt-only employee record
+        merged_emp = {
+            'employee_id': employee_id,
+            'employee_name': receipt_emp.get('employee_name'),
+            'department': receipt_emp.get('department'),
+            'position': receipt_emp.get('position'),
+            'amount': receipt_emp.get('amount'),
+            'car_data': {},
+            'receipt_data': receipt_emp,
+            'validation_status': ValidationStatus.NEEDS_ATTENTION  # Receipt-only needs attention
         }
         
         # Basic validation
@@ -544,15 +599,25 @@ async def start_processing(
                 detail="Failed to acquire session lock"
             )
         
-        # Try to acquire lock without blocking
-        if session_lock.locked():
-            logger.warning(f"Session {session_id} is already being processed by another request")
+        # Try to acquire lock with timeout to prevent race condition
+        try:
+            # Use asyncio.wait_for with try_acquire pattern to avoid race condition
+            # Increased timeout to 1.0 seconds to prevent false conflicts under load
+            acquired = await asyncio.wait_for(session_lock.acquire(), timeout=1.0)
+            if not acquired:
+                logger.warning(f"Session {session_id} is already being processed by another request")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Session is currently being processed by another request"
+                )
+        except asyncio.TimeoutError:
+            logger.warning(f"Session {session_id} lock acquisition timeout - system may be under load")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Session is currently being processed by another request"
+                detail="Session is currently being processed by another request or system is under load"
             )
         
-        async with session_lock:
+        try:
             # Re-check session status after acquiring lock
             if db_session.status in [SessionStatus.PROCESSING, SessionStatus.COMPLETED]:
                 logger.warning(f"Session {session_id} is already processing or completed")
@@ -626,19 +691,32 @@ async def start_processing(
                 timestamp=datetime.now(timezone.utc)
             )
         
+        except HTTPException:
+            raise
+        except SQLAlchemyError as e:
+            logger.error(f"Database error starting processing for session {session_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to start processing due to database error"
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error starting processing for session {session_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to start processing due to internal error"
+            )
+        finally:
+            # Always release the lock
+            if session_lock.locked():
+                session_lock.release()
+    
     except HTTPException:
         raise
-    except SQLAlchemyError as e:
-        logger.error(f"Database error starting processing for session {session_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to start processing due to database error"
-        )
     except Exception as e:
-        logger.error(f"Unexpected error starting processing for session {session_id}: {str(e)}")
+        logger.error(f"Fatal error in start_processing for session {session_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to start processing due to internal error"
+            detail="Failed to start processing"
         )
 
 

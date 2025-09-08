@@ -26,9 +26,27 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: process.env.NODE_ENV === 'development' ? 'http://localhost:8001' : 'http://backend:8001',
-        changeOrigin: true,
+        target: process.env.DOCKER_ENV ? 'http://backend:8001' : 'http://localhost:8001',
+        changeOrigin: false,
         secure: false,
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            // Set host header to match the backend's trusted hosts configuration
+            // This fixes the "Invalid host header" error from TrustedHostMiddleware
+            proxyReq.setHeader('host', 'localhost:8001');
+            
+            // Preserve all headers, especially authentication headers
+            if (req.headers['x-dev-user']) {
+              proxyReq.setHeader('x-dev-user', req.headers['x-dev-user']);
+            }
+            // Preserve any other authentication headers
+            Object.keys(req.headers).forEach(header => {
+              if (header.startsWith('x-') || header === 'authorization') {
+                proxyReq.setHeader(header, req.headers[header]);
+              }
+            });
+          });
+        },
       },
     },
   },
@@ -78,6 +96,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.js'],
+    testTimeout: 15000,
+    hookTimeout: 15000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -298,16 +298,6 @@
               <li v-for="detail in deltaAlert.details" :key="detail" class="pl-4">{{ detail }}</li>
             </ul>
           </div>
-          <div class="mt-3 flex items-center space-x-3">
-            <label class="flex items-center text-sm text-yellow-800">
-              <input
-                v-model="processingOptions.enableDeltaProcessing"
-                type="checkbox"
-                class="mr-2 h-4 w-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
-              />
-              Enable delta processing for this upload
-            </label>
-          </div>
         </div>
         <button
           @click="dismissDeltaAlert"
@@ -321,64 +311,6 @@
       </div>
     </div>
 
-    <!-- Processing Options -->
-    <div class="card">
-      <h3 class="text-lg font-medium text-gray-900 mb-4">Processing Options</h3>
-      
-      <div class="space-y-4">
-        <!-- Validation Options -->
-        <div>
-          <label class="flex items-center text-sm font-medium text-gray-700">
-            <input
-              v-model="processingOptions.enableValidation"
-              type="checkbox"
-              class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            Enable data validation
-          </label>
-          <p class="text-xs text-gray-500 mt-1">Validate extracted data for completeness and accuracy</p>
-        </div>
-
-        <!-- Auto-resolution -->
-        <div>
-          <label class="flex items-center text-sm font-medium text-gray-700">
-            <input
-              v-model="processingOptions.enableAutoResolution"
-              type="checkbox"
-              class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            Enable automatic issue resolution
-          </label>
-          <p class="text-xs text-gray-500 mt-1">Automatically attempt to resolve common data extraction issues</p>
-        </div>
-
-        <!-- Email Notifications -->
-        <div>
-          <label class="flex items-center text-sm font-medium text-gray-700">
-            <input
-              v-model="processingOptions.enableEmailNotifications"
-              type="checkbox"
-              class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            Send email notifications
-          </label>
-          <p class="text-xs text-gray-500 mt-1">Receive notifications when processing is complete</p>
-        </div>
-
-        <!-- Processing Priority -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Processing Priority</label>
-          <select
-            v-model="processingOptions.priority"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="low">Low - Process when resources are available</option>
-            <option value="normal">Normal - Standard processing queue</option>
-            <option value="high">High - Prioritize this processing job</option>
-          </select>
-        </div>
-      </div>
-    </div>
 
     <!-- Upload Actions -->
     <div class="card">
@@ -534,7 +466,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useFileWorker } from '@/composables/useFileWorker'
 import { useNotificationStore } from '@/stores/notification'
@@ -580,14 +512,6 @@ const deltaAlert = ref({
   details: []
 })
 
-// Processing options
-const processingOptions = ref({
-  enableValidation: true,
-  enableAutoResolution: false,
-  enableEmailNotifications: false,
-  enableDeltaProcessing: false,
-  priority: 'normal'
-})
 
 // Constants
 const MAX_CAR_FILE_SIZE = 100 * 1024 * 1024 // 100MB for CAR files
@@ -776,6 +700,22 @@ const uploadCompleted = computed(
   () =>
     carUploadStatus.value === 'completed' &&
     receiptUploadStatus.value === 'completed'
+)
+
+// Watch processing status to reset isProcessingStarted when processing completes
+watch(
+  () => sessionStore.processingStatus,
+  (newStatus, oldStatus) => {
+    // Reset isProcessingStarted when processing completes, errors, or is cancelled
+    if (newStatus === 'completed' || newStatus === 'error' || newStatus === 'cancelled') {
+      isProcessingStarted.value = false
+    }
+    
+    // Log status changes for debugging
+    if (oldStatus !== newStatus) {
+      console.log(`Processing status changed from ${oldStatus} to ${newStatus}`)
+    }
+  }
 )
 
 // File validation with enhanced security checks and consistent error handling
@@ -1403,14 +1343,6 @@ async function performStandardUpload() {
   formData.append('car_file', carFile.value)
   formData.append('receipt_file', receiptFile.value)
   
-  // Add processing options
-  formData.append('processing_options', JSON.stringify({
-    enable_validation: processingOptions.value.enableValidation,
-    enable_auto_resolution: processingOptions.value.enableAutoResolution,
-    enable_email_notifications: processingOptions.value.enableEmailNotifications,
-    enable_delta_processing: processingOptions.value.enableDeltaProcessing,
-    priority: processingOptions.value.priority
-  }))
 
   const xhr = new XMLHttpRequest()
 
@@ -1675,14 +1607,6 @@ async function finalizeChunkedUpload(carFileId, receiptFileId) {
   finalizationData.append('car_file_id', carFileId)
   finalizationData.append('receipt_file_id', receiptFileId)
   
-  // Add processing options
-  finalizationData.append('processing_options', JSON.stringify({
-    enable_validation: processingOptions.value.enableValidation,
-    enable_auto_resolution: processingOptions.value.enableAutoResolution,
-    enable_email_notifications: processingOptions.value.enableEmailNotifications,
-    enable_delta_processing: processingOptions.value.enableDeltaProcessing,
-    priority: processingOptions.value.priority
-  }))
   
   const xhr = new XMLHttpRequest()
   

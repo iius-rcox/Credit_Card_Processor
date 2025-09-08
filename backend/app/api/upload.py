@@ -45,7 +45,7 @@ router = APIRouter(prefix="/api/sessions", tags=["file-upload"])
 
 # File validation constants
 MAX_CAR_FILE_SIZE = settings.max_car_file_size_mb * 1024 * 1024  # Convert MB to bytes
-MAX_RECEIPT_FILE_SIZE = settings.max_receipt_file_size_gb * 1024 * 1024 * 1024  # Convert GB to bytes
+MAX_RECEIPT_FILE_SIZE = settings.max_receipt_file_size_mb * 1024 * 1024  # Convert MB to bytes
 ALLOWED_MIME_TYPES = {'application/pdf'}
 ALLOWED_EXTENSIONS = {'.pdf'}
 PDF_MAGIC_BYTES = b'%PDF-'
@@ -84,8 +84,22 @@ def validate_file_upload(file: UploadFile) -> Dict[str, Any]:
         validation_result['errors'].append("Filename is required")
         return validation_result
     
-    # Sanitize filename to prevent path traversal
-    safe_filename = Path(file.filename).name
+    # Sanitize filename to prevent path traversal attacks
+    import os
+    import re
+    
+    # Remove any path separators and parent directory references
+    safe_filename = os.path.basename(file.filename)
+    
+    # Additional security: reject any filename containing '..'
+    if '..' in file.filename or '/' in file.filename or '\\' in file.filename:
+        validation_result['valid'] = False
+        validation_result['error'] = "Invalid filename: path traversal detected"
+        return validation_result
+    
+    # Remove dangerous characters and sequences
+    safe_filename = re.sub(r'[<>:"|?*\x00-\x1f]', '_', safe_filename)
+    
     if safe_filename != file.filename:
         validation_result['warnings'].append("Filename was sanitized for security")
         validation_result['file_info']['sanitized_filename'] = safe_filename
@@ -271,6 +285,9 @@ def store_file_metadata(session_id: str, files_info: List[Dict[str, Any]]) -> No
         files_info: List of file information dictionaries
     """
     import json
+    import fcntl
+    import tempfile
+    import os
     
     upload_dir = UPLOAD_BASE_DIR / session_id
     metadata_file = upload_dir / "metadata.json"
@@ -281,8 +298,27 @@ def store_file_metadata(session_id: str, files_info: List[Dict[str, Any]]) -> No
         'files': files_info
     }
     
-    with open(metadata_file, 'w') as f:
-        json.dump(metadata, f, indent=2)
+    # Atomic write with file locking to prevent race conditions
+    with tempfile.NamedTemporaryFile(mode='w', dir=upload_dir, delete=False, suffix='.tmp') as temp_file:
+        try:
+            # Acquire exclusive lock on temp file
+            fcntl.flock(temp_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            
+            # Write metadata to temp file
+            json.dump(metadata, temp_file, indent=2)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+            
+            # Atomically move temp file to final location
+            os.rename(temp_file.name, str(metadata_file))
+            
+        except (IOError, OSError) as e:
+            # Clean up temp file on error
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+            raise e
 
 
 FILE_TYPES_TO_NAMES = {

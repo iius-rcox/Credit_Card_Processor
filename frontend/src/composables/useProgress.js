@@ -14,6 +14,7 @@ export function useProgress(options = {}) {
 
   const isPolling = ref(false)
   const pollingInterval = ref(null)
+  const currentSessionId = ref(null) // Track current session to prevent stale closures
   const progress = ref(0)
   const status = ref('idle')
   const message = ref('')
@@ -26,20 +27,7 @@ export function useProgress(options = {}) {
     session_name: null,
   })
 
-  const currentEmployee = ref({
-    employee_id: null,
-    employee_name: null,
-    processing_stage: null,
-  })
-
-  const statistics = ref({
-    total_employees: 0,
-    percent_complete: 0,
-    completed_employees: 0,
-    processing_employees: 0,
-    issues_employees: 0,
-    pending_employees: 0,
-  })
+  // Removed unused currentEmployee and statistics refs
 
   const estimatedTimeRemaining = ref(null)
   const recentActivities = ref([])
@@ -83,19 +71,26 @@ export function useProgress(options = {}) {
     }
 
     isPolling.value = true
+    currentSessionId.value = sessionId // Store current session ID to prevent stale closures
     pollingAttempts = 0
     currentInterval = intervalMs
     error.value = null
     pollingMetrics.value.pollingStartTime = performance.now()
 
     const poll = async () => {
+      // Always use the current session ID to prevent stale closure issues
+      const activeSessionId = currentSessionId.value
+      if (!activeSessionId || !isPolling.value) {
+        return // Stop if session was cleared or polling stopped
+      }
+      
       const pollStartTime = performance.now()
       
       try {
         pollingAttempts++
         pollingMetrics.value.totalPolls++
 
-        const response = await getProcessingStatus(sessionId)
+        const response = await getProcessingStatus(activeSessionId)
         updateProgress(response)
         
         // Track polling performance
@@ -107,7 +102,7 @@ export function useProgress(options = {}) {
         
         if (pollTime > 1000) { // Mark polls over 1 second as slow
           pollingMetrics.value.slowPolls++
-          console.warn(`Slow polling response: ${pollTime.toFixed(2)}ms for session ${sessionId}`)
+          console.warn(`Slow polling response: ${pollTime.toFixed(2)}ms for session ${activeSessionId}`)
         }
 
         // Reset interval on successful request
@@ -162,6 +157,7 @@ export function useProgress(options = {}) {
    */
   function stopPolling() {
     isPolling.value = false
+    currentSessionId.value = null // Clear session ID to prevent stale closures
     if (pollingInterval.value) {
       clearTimeout(pollingInterval.value)
       pollingInterval.value = null
@@ -200,30 +196,7 @@ export function useProgress(options = {}) {
       }
     }
 
-    // Update current employee information
-    if (response.current_employee) {
-      currentEmployee.value = {
-        employee_id: response.current_employee.employee_id || null,
-        employee_name: response.current_employee.employee_name || null,
-        processing_stage: response.current_employee.processing_stage || null,
-      }
-    } else {
-      currentEmployee.value = {
-        employee_id: null,
-        employee_name: null,
-        processing_stage: null,
-      }
-    }
-
-    // Update processing statistics
-    statistics.value = {
-      total_employees: response.total_employees || 0,
-      percent_complete: response.percent_complete || 0,
-      completed_employees: response.completed_employees || 0,
-      processing_employees: response.processing_employees || 0,
-      issues_employees: response.issues_employees || 0,
-      pending_employees: response.pending_employees || 0,
-    }
+    // Removed unused currentEmployee and statistics update logic
 
     // Update estimated time remaining
     estimatedTimeRemaining.value = response.estimated_time_remaining || null
@@ -288,19 +261,7 @@ export function useProgress(options = {}) {
       session_id: null,
       session_name: null,
     }
-    currentEmployee.value = {
-      employee_id: null,
-      employee_name: null,
-      processing_stage: null,
-    }
-    statistics.value = {
-      total_employees: 0,
-      percent_complete: 0,
-      completed_employees: 0,
-      processing_employees: 0,
-      issues_employees: 0,
-      pending_employees: 0,
-    }
+    // Removed unused currentEmployee and statistics reset logic
     estimatedTimeRemaining.value = null
     recentActivities.value = []
     processingStartTime.value = null
@@ -413,25 +374,10 @@ export function useProgress(options = {}) {
     processingStartTime.value = null
     estimatedTimeRemaining.value = null
     
-    // Clear session and employee info
+    // Clear session info
     sessionInfo.value = {
       session_id: null,
       session_name: null,
-    }
-    
-    currentEmployee.value = {
-      employee_id: null,
-      employee_name: null,
-      processing_stage: null,
-    }
-    
-    statistics.value = {
-      total_employees: 0,
-      percent_complete: 0,
-      completed_employees: 0,
-      processing_employees: 0,
-      issues_employees: 0,
-      pending_employees: 0,
     }
   })
 
@@ -444,8 +390,7 @@ export function useProgress(options = {}) {
     error,
     lastUpdated,
     sessionInfo,
-    currentEmployee,
-    statistics,
+    // Removed unused: currentEmployee, statistics
     estimatedTimeRemaining,
     recentActivities,
     processingStartTime,

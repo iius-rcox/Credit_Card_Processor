@@ -564,21 +564,12 @@ export function useApi() {
    * @returns {Promise<Object>} Session summary data
    */
   async function getSummary(sessionId) {
-    const response = await request(`/sessions/${sessionId}/summary`, {
+    return request(`/sessions/${sessionId}/summary`, {
       method: 'GET',
       headers: {
         ...getAuthHeaders(),
       },
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(
-        errorData.detail || `Failed to load summary: ${response.statusText}`
-      )
-    }
-
-    return await response.json()
   }
 
   /**
@@ -602,21 +593,12 @@ export function useApi() {
 
     const queryString = params.toString() ? `?${params.toString()}` : ''
     
-    const response = await request(`/sessions/${sessionId}/exceptions${queryString}`, {
+    return request(`/sessions/${sessionId}/exceptions${queryString}`, {
       method: 'GET',
       headers: {
         ...getAuthHeaders(),
       },
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(
-        errorData.detail || `Failed to load exceptions: ${response.statusText}`
-      )
-    }
-
-    return await response.json()
   }
 
   /**

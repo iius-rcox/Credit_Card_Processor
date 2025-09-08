@@ -230,7 +230,7 @@ async def get_session_exceptions(
             problem_conditions.append(
                 and_(
                     EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-                    EmployeeRevision.validation_flags['coding_incomplete'].as_string().cast(Boolean).is_(True)
+                    func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true'
                 )
             )
         elif issue_type == "data_mismatches":
@@ -238,7 +238,7 @@ async def get_session_exceptions(
             problem_conditions.append(
                 and_(
                     EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-                    EmployeeRevision.validation_flags['amount_mismatch'].as_string().cast(Boolean).is_(True)
+                    func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true'
                 )
             )
         else:
@@ -249,9 +249,7 @@ async def get_session_exceptions(
                     EmployeeRevision.receipt_amount.is_(None),
                     EmployeeRevision.receipt_amount <= 0,
                     # Validation issues
-                    EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-                    # Other validation failures
-                    EmployeeRevision.validation_status == ValidationStatus.FAILED
+                    EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION
                 )
             )
         
@@ -436,7 +434,7 @@ def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStat
         and_(
             EmployeeRevision.session_id == session_uuid,
             EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-            EmployeeRevision.validation_flags['coding_incomplete'].as_string().cast(Boolean).is_(True)
+            func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true'
         )
     ).count()
     
@@ -444,21 +442,25 @@ def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStat
         and_(
             EmployeeRevision.session_id == session_uuid,
             EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-            EmployeeRevision.validation_flags['amount_mismatch'].as_string().cast(Boolean).is_(True)
+            func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true'
         )
     ).count()
     
     issues_count = total_employees - ready_count
     
+    # Calculate resolved issues (those with RESOLVED validation status)
+    resolved_count = db.query(EmployeeRevision).filter(
+        EmployeeRevision.session_id == session_uuid,
+        EmployeeRevision.is_current == True,
+        EmployeeRevision.validation_status == ValidationStatus.RESOLVED
+    ).count()
+    
     return SessionSummaryStats(
         total_employees=total_employees,
         ready_for_export=ready_count,
-        need_attention=issues_count,
-        missing_receipts=missing_receipts,
-        coding_incomplete=coding_issues,
-        data_mismatches=data_mismatches,
-        processing_time="N/A",  # This would be calculated from session metadata
-        export_ready_percentage=round((ready_count / total_employees) * 100, 1) if total_employees > 0 else 0.0
+        needs_attention=issues_count,
+        resolved_issues=resolved_count,
+        validation_success_rate=round((ready_count / total_employees) * 100, 1) if total_employees > 0 else 0.0
     )
 
 
@@ -466,21 +468,40 @@ def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, 
     """Calculate comprehensive statistics for session summary"""
     issue_stats = _calculate_issue_statistics(db, session_uuid)
     
+    # Calculate actual issues breakdown from validation_flags JSON column
+    base_query = db.query(EmployeeRevision).filter(
+        EmployeeRevision.session_id == session_uuid,
+        EmployeeRevision.is_current == True
+    )
+    
+    # Count specific validation flag issues using proper JSON syntax
+    missing_receipts = base_query.filter(
+        func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 'true'
+    ).count()
+    
+    coding_incomplete = base_query.filter(
+        func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true'
+    ).count()
+    
+    data_mismatches = base_query.filter(
+        func.json_extract(EmployeeRevision.validation_flags, '$.data_mismatch') == 'true'
+    ).count()
+    
     return {
         "total_employees": issue_stats.total_employees,
         "ready_for_pvault": issue_stats.ready_for_export,
-        "need_attention": issue_stats.need_attention,
+        "need_attention": issue_stats.needs_attention,
         "issues_breakdown": {
-            "missing_receipts": issue_stats.missing_receipts,
-            "coding_incomplete": issue_stats.coding_incomplete,
-            "data_mismatches": issue_stats.data_mismatches
+            "missing_receipts": missing_receipts,
+            "coding_incomplete": coding_incomplete,
+            "data_mismatches": data_mismatches
         },
         "export_readiness": {
-            "percentage": issue_stats.export_ready_percentage,
+            "percentage": issue_stats.validation_success_rate,
             "ready_count": issue_stats.ready_for_export,
             "total_count": issue_stats.total_employees
         },
-        "status_message": f"{issue_stats.ready_for_export} ready for pVault | {issue_stats.need_attention} need attention"
+        "status_message": f"{issue_stats.ready_for_export} ready for pVault | {issue_stats.needs_attention} need attention"
     }
 
 

@@ -16,6 +16,7 @@ export function useFileUpload() {
   const uploadProgress = ref({})
   const uploadErrors = ref({})
   const globalError = ref(null)
+  const recoveryQueue = ref([])  // Store failed uploads for recovery
   
   // Upload performance metrics
   const uploadMetrics = ref({
@@ -41,6 +42,7 @@ export function useFileUpload() {
   const UPLOAD_RETRY_ATTEMPTS = 3
   const UPLOAD_RETRY_DELAY = 2000 // 2 seconds
   const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB chunks for large files
+  const CHUNK_THRESHOLD = 25 * 1024 * 1024 // Use chunking for files > 25MB
 
   /**
    * Enhanced file validation with comprehensive checks
@@ -217,16 +219,42 @@ export function useFileUpload() {
   }
 
   /**
+   * Store files in recovery queue before removal
+   * @param {Array} filesToStore - Files to store for recovery
+   */
+  function storeInRecoveryQueue(filesToStore) {
+    const timestamp = Date.now()
+    filesToStore.forEach(file => {
+      // Only store files that were being uploaded or failed
+      if (file.status === 'error' || file.status === 'uploading') {
+        recoveryQueue.value.push({
+          ...file,
+          recoveryTimestamp: timestamp,
+          originalProgress: uploadProgress.value[file.id] || 0,
+          originalError: uploadErrors.value[file.id] || null
+        })
+      }
+    })
+    
+    // Limit recovery queue to 50 items to prevent memory leaks
+    if (recoveryQueue.value.length > 50) {
+      recoveryQueue.value.splice(0, recoveryQueue.value.length - 50)
+    }
+  }
+
+  /**
    * Clear all files from the upload queue
    * @param {string} status - Only clear files with specific status (optional)
    */
   function clearFiles(status = null) {
     if (status) {
+      // Store files with specific status in recovery queue before clearing
+      const filesToRemove = files.value.filter(f => f.status === status)
+      storeInRecoveryQueue(filesToRemove)
+      
       // Clear only files with specific status
       const filesToKeep = files.value.filter(f => f.status !== status)
-      const removedIds = files.value
-        .filter(f => f.status === status)
-        .map(f => f.id)
+      const removedIds = filesToRemove.map(f => f.id)
         
       files.value = filesToKeep
       
@@ -236,6 +264,9 @@ export function useFileUpload() {
         delete uploadErrors.value[id]
       })
     } else {
+      // Store all files in recovery queue before clearing
+      storeInRecoveryQueue(files.value)
+      
       // Clear all files
       files.value = []
       uploadProgress.value = {}
@@ -254,13 +285,165 @@ export function useFileUpload() {
   }
 
   /**
+   * Upload a large file in chunks for improved reliability and memory efficiency
+   * @param {string} sessionId - Session ID to upload to
+   * @param {Object} fileObj - File object to upload
+   * @param {number} attempt - Current attempt number (for retry logic)
+   * @returns {Promise<Object>}
+   */
+  async function uploadFileInChunks(sessionId, fileObj, attempt = 1) {
+    const file = fileObj.file
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+    const startTime = Date.now()
+    let uploadedBytes = 0
+    
+    // Generate unique upload session ID for this chunked upload
+    const uploadSessionId = `${sessionId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    try {
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE
+        const end = Math.min(start + CHUNK_SIZE, file.size)
+        const chunk = file.slice(start, end)
+        
+        const formData = new FormData()
+        formData.append('chunk', chunk)
+        formData.append('chunk_index', chunkIndex.toString())
+        formData.append('total_chunks', totalChunks.toString())
+        formData.append('upload_session_id', uploadSessionId)
+        formData.append('client_filename', fileObj.name)
+        formData.append('file_size', file.size.toString())
+        formData.append('chunk_size', chunk.size.toString())
+        
+        if (fileObj.category) {
+          formData.append('category', fileObj.category)
+        }
+        
+        // Upload chunk with retry on failure
+        await uploadChunk(formData, chunkIndex, totalChunks, fileObj, startTime, uploadedBytes, end)
+        
+        uploadedBytes = end
+        
+        // Update progress after each chunk
+        const progress = Math.round((uploadedBytes / file.size) * 100)
+        const elapsed = Math.max(Date.now() - startTime, 1)
+        const speed = (uploadedBytes / elapsed) * 1000
+        
+        updateProgressSafely(fileObj.id, progress, {
+          uploadedBytes,
+          totalBytes: file.size,
+          speed: Math.round(speed),
+          estimatedTimeRemaining: Math.round((file.size - uploadedBytes) / speed),
+          chunkProgress: `${chunkIndex + 1}/${totalChunks}`,
+          chunkedUpload: true
+        })
+      }
+      
+      // All chunks uploaded successfully
+      const finalResponse = {
+        fileId: uploadSessionId,
+        fileName: fileObj.name,
+        fileSize: file.size,
+        uploadTime: Date.now() - startTime,
+        chunked: true,
+        totalChunks
+      }
+      
+      updateUploadMetrics(file.size, Date.now() - startTime)
+      return finalResponse
+      
+    } catch (error) {
+      console.error(`Chunked upload failed for ${fileObj.name}:`, error)
+      throw error
+    }
+  }
+  
+  /**
+   * Upload a single chunk with retry logic
+   * @param {FormData} formData - Chunk data and metadata
+   * @param {number} chunkIndex - Current chunk index
+   * @param {number} totalChunks - Total number of chunks
+   * @param {Object} fileObj - File object being uploaded
+   * @param {number} startTime - Upload start time
+   * @param {number} uploadedBytes - Bytes uploaded so far
+   * @param {number} chunkEndByte - End byte position of this chunk
+   * @returns {Promise<void>}
+   */
+  async function uploadChunk(formData, chunkIndex, totalChunks, fileObj, startTime, uploadedBytes, chunkEndByte) {
+    const maxChunkRetries = 3
+    let chunkRetries = 0
+    
+    while (chunkRetries < maxChunkRetries) {
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          
+          xhr.upload.addEventListener('progress', event => {
+            if (event.lengthComputable) {
+              // Calculate overall progress including this chunk's progress
+              const chunkProgress = event.loaded / event.total
+              const totalProgress = (uploadedBytes + (event.loaded)) / fileObj.size
+              const progress = Math.round(totalProgress * 100)
+              const elapsed = Math.max(Date.now() - startTime, 1)
+              const speed = ((uploadedBytes + event.loaded) / elapsed) * 1000
+              
+              updateProgressSafely(fileObj.id, progress, {
+                uploadedBytes: uploadedBytes + event.loaded,
+                totalBytes: fileObj.size,
+                speed: Math.round(speed),
+                estimatedTimeRemaining: Math.round((fileObj.size - uploadedBytes - event.loaded) / speed),
+                chunkProgress: `${chunkIndex + 1}/${totalChunks} (${Math.round(chunkProgress * 100)}%)`,
+                chunkedUpload: true
+              })
+            }
+          })
+          
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(JSON.parse(xhr.responseText || '{}'))
+            } else {
+              reject(new Error(`Chunk upload failed: ${xhr.status} ${xhr.statusText}`))
+            }
+          }
+          
+          xhr.onerror = () => reject(new Error('Chunk upload network error'))
+          xhr.ontimeout = () => reject(new Error('Chunk upload timeout'))
+          
+          xhr.timeout = 30000 // 30 second timeout per chunk
+          xhr.open('POST', `/api/sessions/${fileObj.sessionId}/upload-chunk`)
+          xhr.send(formData)
+        })
+        
+        // Chunk uploaded successfully, break retry loop
+        break
+        
+      } catch (error) {
+        chunkRetries++
+        if (chunkRetries >= maxChunkRetries) {
+          throw new Error(`Failed to upload chunk ${chunkIndex + 1}/${totalChunks} after ${maxChunkRetries} retries: ${error.message}`)
+        }
+        
+        // Wait before retrying chunk
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, chunkRetries) * 1000))
+        console.warn(`Retrying chunk ${chunkIndex + 1}/${totalChunks}, attempt ${chunkRetries + 1}`)
+      }
+    }
+  }
+
+  /**
    * Upload a single file with retry logic and comprehensive error handling
+   * Uses chunked upload for large files to improve reliability and performance
    * @param {string} sessionId - Session ID to upload to
    * @param {Object} fileObj - File object to upload
    * @param {number} attempt - Current attempt number (for retry logic)
    * @returns {Promise<Object>}
    */
   async function uploadSingleFile(sessionId, fileObj, attempt = 1) {
+    // Use chunked upload for large files
+    if (fileObj.size > CHUNK_THRESHOLD) {
+      return uploadFileInChunks(sessionId, fileObj, attempt)
+    }
+    
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       const formData = new FormData()
@@ -280,14 +463,26 @@ export function useFileUpload() {
       xhr.upload.addEventListener('progress', event => {
         if (event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100)
-          const elapsed = Date.now() - startTime
-          const speed = elapsed > 0 ? (event.loaded / elapsed) * 1000 : 0 // bytes per second
-          const remaining = speed > 0 ? (event.total - event.loaded) / speed : 0
+          const elapsed = Math.max(Date.now() - startTime, 1) // Ensure minimum 1ms to prevent division by zero
+          const speed = (event.loaded / elapsed) * 1000 // bytes per second
+          const remaining = speed > 0 && event.loaded < event.total ? (event.total - event.loaded) / speed : 0
           
-          uploadProgress.value[fileObj.id] = progress
-          fileObj.progress = progress
-          fileObj.uploadSpeed = speed
-          fileObj.timeRemaining = remaining
+          // Apply smoothing to avoid jittery progress updates
+          const currentProgress = uploadProgress.value[fileObj.id] || 0
+          const smoothedProgress = progress > currentProgress ? progress : Math.max(currentProgress, progress - 1)
+          
+          uploadProgress.value[fileObj.id] = smoothedProgress
+          fileObj.progress = smoothedProgress
+          
+          // Apply smoothing to speed calculation using exponential moving average
+          const prevSpeed = fileObj.uploadSpeed || 0
+          const smoothedSpeed = prevSpeed > 0 ? (prevSpeed * 0.7 + speed * 0.3) : speed
+          fileObj.uploadSpeed = smoothedSpeed
+          
+          // Recalculate remaining time with smoothed speed
+          const smoothedRemaining = smoothedSpeed > 0 && event.loaded < event.total ? 
+            (event.total - event.loaded) / smoothedSpeed : 0
+          fileObj.timeRemaining = smoothedRemaining
           
           // Update store progress if available
           if (store && store.updateFileProgress) {
@@ -804,6 +999,48 @@ export function useFileUpload() {
     files.value = []
   })
 
+  /**
+   * Recover files from recovery queue
+   * @param {Array} fileIds - Specific file IDs to recover (optional)
+   */
+  function recoverFilesFromQueue(fileIds = null) {
+    const filesToRecover = fileIds 
+      ? recoveryQueue.value.filter(f => fileIds.includes(f.id))
+      : [...recoveryQueue.value]
+    
+    filesToRecover.forEach(recoveryFile => {
+      // Remove recovery metadata
+      const { recoveryTimestamp, originalProgress, originalError, ...fileData } = recoveryFile
+      
+      // Reset file state for retry
+      fileData.status = 'pending'
+      fileData.progress = 0
+      fileData.error = null
+      fileData.uploadAttempts = 0
+      
+      // Add back to files array if not already present
+      if (!files.value.find(f => f.id === fileData.id)) {
+        files.value.push(fileData)
+      }
+      
+      // Remove from recovery queue
+      const index = recoveryQueue.value.findIndex(f => f.id === fileData.id)
+      if (index !== -1) {
+        recoveryQueue.value.splice(index, 1)
+      }
+    })
+    
+    console.log(`Recovered ${filesToRecover.length} files from recovery queue`)
+  }
+
+  /**
+   * Clear all files from recovery queue
+   */
+  function clearRecoveryQueue() {
+    recoveryQueue.value = []
+    console.log('Recovery queue cleared')
+  }
+
   return {
     // State
     files,
@@ -845,6 +1082,11 @@ export function useFileUpload() {
     // Utility Methods
     formatFileSize,
     generateFileId,
+    
+    // Recovery Methods
+    recoveryQueue,
+    recoverFilesFromQueue,
+    clearRecoveryQueue,
     
     // Performance
     uploadMetrics,
