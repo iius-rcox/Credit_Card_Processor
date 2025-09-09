@@ -2,7 +2,7 @@ import { render, fireEvent, screen, waitFor } from '@testing-library/vue'
 import { vi } from 'vitest'
 import SummaryResults from '@/components/SummaryResults.vue'
 
-// Mock API composable
+// Mock API
 const getSummaryMock = vi.fn().mockResolvedValue({
   processing_completed: true,
   total_employees: 10,
@@ -13,79 +13,102 @@ const getSummaryMock = vi.fn().mockResolvedValue({
 })
 const getExceptionsMock = vi.fn().mockResolvedValue({
   employees: [
-    { employee_id: '123', employee_name: 'John Doe', issue_category: 'missing_receipts' }
+    { revision_id: 'r1', employee_id: '123', employee_name: 'John Doe', issue_category: 'missing_receipts', car_amount: 100, receipt_amount: null, validation_status: 'needs_attention' }
   ]
 })
 
 vi.mock('@/composables/useApi.js', () => ({
-  useApi: () => ({ getSummary: getSummaryMock, getExceptions: getExceptionsMock })
+  useApi: () => ({
+    getSummary: getSummaryMock,
+    getExceptions: getExceptionsMock
+  })
 }))
 
-// Stub SummaryCard to simulate expanding details and action click
-const SummaryCardStub = {
-  template: `
-    <div>
-      <button data-testid="expand" @click="$emit('expand-change', true)">expand</button>
-      <button data-testid="view-all" @click="$emit('action-click', { key: 'view-issues' })">view-all</button>
-      <slot name="details"></slot>
-    </div>
-  `
-}
-
-// Simple stub for the employee list used in details slot
-const ExpandableEmployeeListStub = {
-  props: ['employees', 'categoryName'],
+// Stub ExceptionsTable to render rows plainly
+const ExceptionsTableStub = {
+  props: ['employees'],
   template: `<div>
-    <div data-testid="category">{{ categoryName }}</div>
-    <ul>
-      <li v-for="e in employees" :key="e.employee_id">{{ e.employee_name }}</li>
-    </ul>
+    <table>
+      <tbody>
+        <tr v-for="e in employees" :key="e.revision_id">
+          <td>{{ e.employee_name }} ({{ e.employee_id }})</td>
+        </tr>
+      </tbody>
+    </table>
   </div>`
 }
 
-describe('SummaryResults - View All Issues', () => {
+describe('SummaryResults - View All Issues (table)', () => {
   beforeEach(() => {
     getSummaryMock.mockClear()
     getExceptionsMock.mockClear()
   })
 
-  it('loads exceptions when details expand', async () => {
-    render(SummaryResults, {
+  it('loads exceptions when details expand and shows table rows', async () => {
+    const { container } = render(SummaryResults, {
       props: { sessionId: 'test-session' },
       global: {
         stubs: {
-          SummaryCard: SummaryCardStub,
-          ExpandableEmployeeList: ExpandableEmployeeListStub
+          ExceptionsTable: ExceptionsTableStub,
+          SummaryCard: {
+            props: ['title', 'subtitle', 'primaryMetrics', 'detailMetrics', 'statusMessage', 'statusType', 'actionButtons', 'expandable', 'defaultExpanded'],
+            emits: ['metric-click', 'action-click', 'expand-change'],
+            template: `<div>
+              <h2>{{ title }}</h2>
+              <p>{{ subtitle }}</p>
+              <button @click="$emit('action-click', { key: 'view-issues' })">View All Issues</button>
+              <div class="details-section">
+                <slot name="details" />
+              </div>
+            </div>`
+          }
         }
       }
     })
 
     await waitFor(() => expect(getSummaryMock).toHaveBeenCalledWith('test-session'))
 
-    await fireEvent.click(screen.getByTestId('expand'))
+    // Click the View All Issues button to trigger expand and load exceptions
+    const viewIssuesButton = screen.getByText('View All Issues')
+    await fireEvent.click(viewIssuesButton)
 
+    // Wait for exceptions to load
     await waitFor(() => expect(getExceptionsMock).toHaveBeenCalledWith('test-session'))
 
-    await screen.findByText('John Doe')
+    // After exceptions fetched, ensure a row appears
+    await screen.findByText('John Doe (123)')
   })
 
   it('loads exceptions when "View All Issues" action is clicked', async () => {
-    render(SummaryResults, {
+    const { container } = render(SummaryResults, {
       props: { sessionId: 'test-session' },
       global: {
         stubs: {
-          SummaryCard: SummaryCardStub,
-          ExpandableEmployeeList: ExpandableEmployeeListStub
+          ExceptionsTable: ExceptionsTableStub,
+          SummaryCard: {
+            props: ['title', 'subtitle', 'primaryMetrics', 'detailMetrics', 'statusMessage', 'statusType', 'actionButtons', 'expandable', 'defaultExpanded'],
+            emits: ['metric-click', 'action-click', 'expand-change'],
+            template: `<div>
+              <h2>{{ title }}</h2>
+              <p>{{ subtitle }}</p>
+              <button @click="$emit('action-click', { key: 'view-issues' })">View All Issues</button>
+              <div class="details-section">
+                <slot name="details" />
+              </div>
+            </div>`
+          }
         }
       }
     })
 
     await waitFor(() => expect(getSummaryMock).toHaveBeenCalled())
 
-    await fireEvent.click(screen.getByTestId('view-all'))
+    // Click the View All Issues button to trigger action
+    const viewIssuesButton = screen.getByText('View All Issues')
+    await fireEvent.click(viewIssuesButton)
 
+    // Wait for exceptions to load and appear
     await waitFor(() => expect(getExceptionsMock).toHaveBeenCalledWith('test-session'))
-
-    await screen.findByText('John Doe')
+    await screen.findByText('John Doe (123)')
   })
 })

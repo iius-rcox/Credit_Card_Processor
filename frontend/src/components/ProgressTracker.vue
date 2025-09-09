@@ -33,7 +33,9 @@
             v-if="progress.isIndeterminate"
             class="w-full bg-gray-200 rounded-full h-6 overflow-hidden"
           >
-            <div class="h-6 bg-blue-500 rounded-full animate-pulse" style="width: 60%;"></div>
+            <div class="h-6 relative overflow-hidden">
+              <div class="h-full bg-blue-500 rounded-full indeterminate-progress"></div>
+            </div>
           </div>
 
           <!-- Determinate Progress (when total known) -->
@@ -43,7 +45,8 @@
           >
             <div
               :class="[
-                'h-6 rounded-full transition-all duration-500 ease-out',
+                'h-6 rounded-full',
+                progress.totalEmployees > 0 ? 'transition-all duration-500 ease-out' : '',
                 progress.progressColor,
               ]"
               :style="{ width: `${progress.progressPercentage}%` }"
@@ -304,8 +307,27 @@ function formatActivityTime(timestamp) {
   }
 }
 
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 30%;
+  }
+  50% {
+    transform: translateX(50%);
+    width: 60%;
+  }
+  100% {
+    transform: translateX(400%);
+    width: 30%;
+  }
+}
+
 .animate-stripe {
   animation: stripe-animation 2s linear infinite;
+}
+
+.indeterminate-progress {
+  animation: indeterminate 2s ease-in-out infinite;
 }
 
 /* Card styles */

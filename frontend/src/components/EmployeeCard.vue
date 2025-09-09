@@ -19,7 +19,7 @@
           <div>
             <div class="flex items-center space-x-2 mb-1">
               <h4 class="text-lg font-semibold text-gray-900">
-                {{ employee.employee_name }}
+                {{ formatEmployeeName(employee) }}
               </h4>
               <!-- Delta Change Indicator -->
               <div v-if="employee.delta_change" class="flex items-center">
@@ -47,7 +47,6 @@
               </div>
             </div>
             <div class="flex items-center space-x-4 text-sm text-gray-600">
-              <span>ID: {{ employee.employee_id }}</span>
               <span>{{ employee.department }}</span>
               <span v-if="employee.position">{{ employee.position }}</span>
             </div>
@@ -145,13 +144,6 @@
           </div>
 
           <div class="flex items-center space-x-2">
-            <!-- Details Toggle -->
-            <button
-              class="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              @click="showDetails = !showDetails"
-            >
-              {{ showDetails ? 'Less Details' : 'More Details' }}
-            </button>
 
             <!-- Resolve Button -->
             <button
@@ -168,8 +160,8 @@
           </div>
         </div>
 
-        <!-- Detailed Information (Expandable) -->
-        <div v-show="showDetails" class="mt-4 pt-4 border-t border-gray-100">
+        <!-- Detailed Information -->
+        <div class="mt-4 pt-4 border-t border-gray-100">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <!-- Employee Details -->
             <div>
@@ -333,8 +325,7 @@ const props = defineProps({
 // Emits
 defineEmits(['select', 'resolve'])
 
-// State
-const showDetails = ref(false)
+// State removed - always show details
 
 // Computed Properties
 const variance = computed(() => {
@@ -389,6 +380,12 @@ const canResolve = computed(() => {
 })
 
 // Methods
+function formatEmployeeName(employee) {
+  const name = employee.employee_name || 'Unknown'
+  const id = employee.employee_id || 'N/A'
+  return `${name} (${id})`
+}
+
 function formatCurrency(amount) {
   if (amount == null || amount === '') return '$0.00'
   return new Intl.NumberFormat('en-US', {

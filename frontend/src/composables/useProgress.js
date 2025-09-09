@@ -32,6 +32,10 @@ export function useProgress(options = {}) {
   // Progress counters for determinate/indeterminate display
   const totalEmployees = ref(0)
   const completedEmployees = ref(0)
+  const readyForExport = ref(0)
+  const validEmployees = ref(0)
+  const issuesEmployees = ref(0)
+  const resolvedEmployees = ref(0)
 
   const estimatedTimeRemaining = ref(null)
   const recentActivities = ref([])
@@ -114,7 +118,9 @@ export function useProgress(options = {}) {
         pollingAttempts++
         pollingMetrics.value.totalPolls++
 
+        console.log('[Progress Debug] Polling for session:', activeSessionId)
         const response = await getProcessingStatus(activeSessionId)
+        console.log('[Progress Debug] Polling response:', response)
         updateProgress(response)
         
         // Track polling performance
@@ -201,19 +207,28 @@ export function useProgress(options = {}) {
       return
     }
 
+    console.log('[Progress Debug] Full response received:', response)
     status.value = response.status || 'idle'
 
     // Update employee counters
     totalEmployees.value = response.total_employees ?? 0
     completedEmployees.value = response.completed_employees ?? 0
+    readyForExport.value = response.ready_for_export ?? 0
+    validEmployees.value = response.valid_employees ?? 0
+    issuesEmployees.value = response.issues_employees ?? 0
+    resolvedEmployees.value = response.resolved_employees ?? 0
 
     // Use backend's percent_complete when available, otherwise calculate from counters
     if (typeof response.percent_complete === 'number' && !isNaN(response.percent_complete)) {
+      console.log('[Progress Debug] Backend percent_complete:', response.percent_complete, 'completed:', response.completed_employees, 'total:', response.total_employees)
       progress.value = Math.max(0, Math.min(100, response.percent_complete))
     } else if (totalEmployees.value > 0) {
       // Fallback calculation from counters
-      progress.value = Math.max(0, Math.min(100, Math.round((completedEmployees.value / totalEmployees.value) * 100)))
+      const calculated = Math.max(0, Math.min(100, Math.round((completedEmployees.value / totalEmployees.value) * 100)))
+      console.log('[Progress Debug] Calculated progress:', calculated, 'completed:', completedEmployees.value, 'total:', totalEmployees.value)
+      progress.value = calculated
     } else {
+      console.log('[Progress Debug] No progress data - setting to 0')
       progress.value = 0
     }
     message.value = response.message || ''
@@ -292,7 +307,11 @@ export function useProgress(options = {}) {
       session_id: null,
       session_name: null,
     }
-    // Removed unused currentEmployee and statistics reset logic
+    // Reset additional counters
+    readyForExport.value = 0
+    validEmployees.value = 0
+    issuesEmployees.value = 0
+    resolvedEmployees.value = 0
     estimatedTimeRemaining.value = null
     recentActivities.value = []
     processingStartTime.value = null
@@ -320,16 +339,36 @@ export function useProgress(options = {}) {
 
   // Progress display logic
   const isIndeterminate = computed(() => {
-    return status.value === 'processing' && totalEmployees.value === 0
+    // Show indeterminate ONLY when:
+    // 1. We're in a processing status AND
+    // 2. We have no meaningful progress data (no total AND no progress percentage)
+    const isProcessingStatus = ['processing', 'uploading', 'extracting', 'analyzing'].includes(status.value)
+    const hasProgressData = totalEmployees.value > 0 || progress.value > 0
+    const result = isProcessingStatus && !hasProgressData
+    
+    console.log('[Progress Debug] isIndeterminate:', result, 'status:', status.value, 'totalEmployees:', totalEmployees.value, 'progress:', progress.value, 'hasProgressData:', hasProgressData)
+    return result
   })
 
-  const progressPercentage = computed(() =>
-    Math.max(0, Math.min(100, progress.value))
-  )
+  const progressPercentage = computed(() => {
+    const percentage = Math.max(0, Math.min(100, progress.value))
+    console.log('[Progress Debug] Display percentage:', percentage, 'from progress.value:', progress.value)
+    return percentage
+  })
 
   const progressCounters = computed(() => {
     if (totalEmployees.value > 0) {
-      return `${completedEmployees.value} of ${totalEmployees.value}`
+      // Show actual processed count during processing
+      const processedCount = completedEmployees.value || 0
+      const readyCount = readyForExport.value || 0
+      
+      if (status.value === 'completed') {
+        // After completion, show both processed and export-ready
+        return `${processedCount} of ${totalEmployees.value} processed (${readyCount} ready for export)`
+      } else {
+        // During processing, show progress
+        return `${processedCount} of ${totalEmployees.value} processed`
+      }
     } else if (completedEmployees.value > 0) {
       return `${completedEmployees.value} processed (total unknown)`
     } else if (status.value === 'processing') {
@@ -425,6 +464,14 @@ export function useProgress(options = {}) {
     processingStartTime.value = null
     estimatedTimeRemaining.value = null
     
+    // Reset counters
+    totalEmployees.value = 0
+    completedEmployees.value = 0
+    readyForExport.value = 0
+    validEmployees.value = 0
+    issuesEmployees.value = 0
+    resolvedEmployees.value = 0
+    
     // Clear session info
     sessionInfo.value = {
       session_id: null,
@@ -444,6 +491,10 @@ export function useProgress(options = {}) {
     // Progress counters
     totalEmployees,
     completedEmployees,
+    readyForExport,
+    validEmployees,
+    issuesEmployees,
+    resolvedEmployees,
     estimatedTimeRemaining,
     recentActivities,
     processingStartTime,

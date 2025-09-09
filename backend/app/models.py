@@ -65,7 +65,10 @@ class GUID(TypeDecorator):
 # Enums for status fields
 class SessionStatus(PyEnum):
     PENDING = "pending"
+    UPLOADING = "uploading"
     PROCESSING = "processing"
+    EXTRACTING = "extracting"
+    ANALYZING = "analyzing"
     PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"

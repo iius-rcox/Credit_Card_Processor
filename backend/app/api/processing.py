@@ -284,6 +284,11 @@ async def process_documents_with_intelligence(
             # Update progress
             percent_complete = int((processed_count / total_employees) * 100)
 
+            # Update session's processed_employees counter for progress tracking
+            if processed_count % 10 == 0 or processed_count == total_employees:  # Update every 10 employees
+                db_session.processed_employees = processed_count
+                db.commit()  # Commit progress update
+
             # Send WebSocket progress update
             await notifier.notify_processing_progress(
                 session_id, processed_count, total_employees, "processing"

@@ -272,12 +272,22 @@ async def get_session_exceptions(
         employees_data = []
         for emp in employees:
             issue_category = _categorize_employee_issues(emp)
+            # Compute difference when both amounts exist
+            car_amount_val = float(emp.car_amount) if emp.car_amount is not None else None
+            receipt_amount_val = float(emp.receipt_amount) if emp.receipt_amount is not None else None
+            difference_val = None
+            if car_amount_val is not None and receipt_amount_val is not None:
+                try:
+                    difference_val = round(receipt_amount_val - car_amount_val, 2)
+                except Exception:
+                    difference_val = None
             employees_data.append({
                 "revision_id": str(emp.revision_id),
                 "employee_id": emp.employee_id,
                 "employee_name": emp.employee_name or "Unknown",
                 "car_amount": float(emp.car_amount) if emp.car_amount else None,
                 "receipt_amount": float(emp.receipt_amount) if emp.receipt_amount else None,
+                "difference": difference_val,
                 "validation_status": emp.validation_status.value,
                 "validation_flags": emp.validation_flags or {},
                 "issue_category": issue_category,
@@ -479,16 +489,45 @@ def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, 
     
     # Count specific validation flag issues using proper JSON syntax
     missing_receipts = base_query.filter(
-        func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 'true'
+        or_(
+            func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 'true',
+            func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 1
+        )
     ).count()
     
     coding_incomplete = base_query.filter(
-        func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true'
+        and_(
+            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+            or_(
+                func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true',
+                func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 1
+            )
+        )
     ).count()
     
     data_mismatches = base_query.filter(
-        func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true'
+        and_(
+            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+            or_(
+                func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true',
+                func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 1
+            )
+        )
     ).count()
+
+    # Compute processing time string
+    session = db.query(ProcessingSession).filter(ProcessingSession.session_id == session_uuid).first()
+    processing_time = None
+    if session and session.created_at:
+        from datetime import datetime, timezone
+        end_time = session.updated_at or datetime.now(timezone.utc)
+        delta = end_time - session.created_at
+        # Format as HH:MM:SS
+        total_seconds = int(delta.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        processing_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     
     return {
         "total_employees": issue_stats.total_employees,
@@ -504,7 +543,8 @@ def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, 
             "ready_count": issue_stats.ready_for_export,
             "total_count": issue_stats.total_employees
         },
-        "status_message": f"{issue_stats.ready_for_export} ready for pVault | {issue_stats.needs_attention} need attention"
+        "status_message": f"{issue_stats.ready_for_export} ready for pVault | {issue_stats.needs_attention} need attention",
+        "processing_time": processing_time
     }
 
 

@@ -512,39 +512,54 @@ def calculate_progress_statistics(session: ProcessingSession, db: Session = None
             EmployeeRevision.session_id == session.session_id
         ).group_by(EmployeeRevision.validation_status).all()
     
-    # Initialize counts
-    completed_employees = 0
+    # Count by status type
+    valid_employees = 0
     issues_employees = 0
+    resolved_employees = 0
     processing_employees = 0
     
     # Process counts from query results or preloaded data
     for status_enum, count in employee_counts:
         if status_enum == ValidationStatus.VALID:
-            completed_employees = count
+            valid_employees = count
         elif status_enum == ValidationStatus.NEEDS_ATTENTION:
             issues_employees = count
         elif status_enum == ValidationStatus.RESOLVED:
-            completed_employees += count
+            resolved_employees = count
     
-    # Calculate remaining employees
+    # CRITICAL FIX: Calculate actual processed count vs export-ready count
     total_employees = session.total_employees or 0
-    pending_employees = max(0, total_employees - completed_employees - issues_employees - processing_employees)
     
-    # Calculate progress percentage
-    if total_employees > 0:
-        percent_complete = min(100, int((completed_employees / total_employees) * 100))
+    # During active processing, use the session's processed counter
+    if session.status.value in ['processing', 'extracting', 'analyzing', 'uploading']:
+        # Use the real-time processed counter from session
+        completed_employees = session.processed_employees or 0
+        # Calculate actual progress based on processing, not validation
+        percent_complete = min(100, int((completed_employees / total_employees) * 100)) if total_employees > 0 else 0
+        logger.info(f"[Progress Debug] Processing status: {session.status.value}, completed: {completed_employees}, total: {total_employees}, percent: {percent_complete}")
     else:
-        # When total is unknown, only show 100% when explicitly completed
+        # After processing, count ALL employees that were processed (regardless of validation status)
+        completed_employees = valid_employees + issues_employees + resolved_employees
+        # For completed sessions, ensure 100% if status is COMPLETED
         if session.status == ModelSessionStatus.COMPLETED:
             percent_complete = 100
         else:
-            percent_complete = 0
+            percent_complete = min(100, int((completed_employees / total_employees) * 100)) if total_employees > 0 else 0
+    
+    # Calculate pending (not yet processed)
+    pending_employees = max(0, total_employees - completed_employees)
+    
+    # For export readiness (different from processing completion)
+    ready_for_export = valid_employees + resolved_employees
     
     return {
         'total_employees': total_employees,
-        'completed_employees': completed_employees,
-        'processing_employees': processing_employees,
+        'completed_employees': completed_employees,  # ALL processed employees
+        'ready_for_export': ready_for_export,  # Only VALID/RESOLVED
+        'valid_employees': valid_employees,
         'issues_employees': issues_employees,
+        'resolved_employees': resolved_employees,
+        'processing_employees': processing_employees,
         'pending_employees': pending_employees,
         'percent_complete': percent_complete
     }
@@ -562,7 +577,7 @@ def get_current_employee(session: ProcessingSession, db: Session = None) -> Opti
     Returns:
         CurrentEmployee object if processing, None otherwise
     """
-    if session.status != ModelSessionStatus.PROCESSING:
+    if session.status.value not in ['processing', 'extracting', 'analyzing']:
         return None
     
     # Use preloaded processing_activities to avoid additional queries
@@ -616,7 +631,7 @@ def estimate_remaining_time(session: ProcessingSession, progress_stats: dict, db
     Returns:
         Formatted time string (HH:MM:SS) or None
     """
-    if session.status not in [ModelSessionStatus.PROCESSING] or progress_stats['total_employees'] == 0:
+    if session.status.value not in ['processing', 'extracting', 'analyzing'] or progress_stats['total_employees'] == 0:
         return None
     
     # Get processing start time from first processing activity
@@ -830,8 +845,11 @@ async def get_session_status(
             total_employees=progress_stats['total_employees'],
             percent_complete=progress_stats['percent_complete'],
             completed_employees=progress_stats['completed_employees'],
+            ready_for_export=progress_stats['ready_for_export'],
+            valid_employees=progress_stats['valid_employees'],
             processing_employees=progress_stats['processing_employees'],
             issues_employees=progress_stats['issues_employees'],
+            resolved_employees=progress_stats['resolved_employees'],
             pending_employees=progress_stats['pending_employees'],
             estimated_time_remaining=estimated_time,
             processing_start_time=processing_start,

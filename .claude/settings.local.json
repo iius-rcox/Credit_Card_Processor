@@ -42,7 +42,8 @@
       "Bash(cat:*)",
       "Bash(BACKEND_URL=http://localhost:8001 python3 -m pytest tests/test_authentication.py tests/test_file_upload.py tests/test_export_api.py -v --tb=short)",
       "Bash(npm audit:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(open http://localhost:3000)"
     ],
     "deny": [],
     "ask": []

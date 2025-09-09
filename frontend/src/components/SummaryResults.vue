@@ -19,79 +19,21 @@
       <template #details v-if="showExceptionDetails">
         <div class="exception-details">
           <h4 class="text-lg font-semibold text-gray-900 mb-4">Issues Requiring Attention</h4>
-          
-          <!-- Issue Categories using ExpandableEmployeeList -->
-          <div class="issue-categories">
-            <ExpandableEmployeeList
-              v-for="category in issueCategories" 
-              :key="category.key"
-              :category-name="category.name"
-              :description="category.description"
-              :employees="category.employees"
-              :issue-type="category.type"
-              :default-expanded="expandedCategories.includes(category.key)"
-              :items-per-page="5"
-              :enable-search="category.employees.length > 10"
-              :enable-bulk-actions="true"
-              @employee-resolve="handleResolveEmployee"
-              @quick-action="handleQuickAction"
-              @bulk-resolve="handleBulkResolve"
-              @expand-change="(expanded) => handleCategoryExpandChange(category.key, expanded)"
-            />
-          </div>
+          <ExceptionsTable 
+            :employees="exceptions" 
+            @resolve-employee="handleEmployeeResolve"
+          />
         </div>
       </template>
     </SummaryCard>
 
-    <!-- Quick Actions Panel (when issues exist) -->
-    <div v-if="hasIssues" class="quick-actions-panel">
-      <div class="quick-actions-header">
-        <h3 class="text-lg font-semibold text-gray-900">Quick Actions</h3>
-        <p class="text-sm text-gray-600">Resolve common issues quickly</p>
-      </div>
-      
-      <div class="quick-actions-grid">
-        <button
-          v-for="action in quickActions"
-          :key="action.key"
-          @click="handleQuickAction(action)"
-          class="quick-action-card"
-          :class="`action-${action.type}`"
-          :disabled="action.disabled"
-        >
-          <div class="action-icon">
-            <svg v-if="action.type === 'upload'" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <svg v-else-if="action.type === 'auto'" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-            </svg>
-            <svg v-else-if="action.type === 'fix'" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
-          <div class="action-content">
-            <div class="action-title">{{ action.title }}</div>
-            <div class="action-description">{{ action.description }}</div>
-            <div v-if="action.count" class="action-count">
-              Affects {{ action.count }} employees
-            </div>
-          </div>
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import SummaryCard from './SummaryCard.vue'
-import ExpandableEmployeeList from './ExpandableEmployeeList.vue'
+import ExceptionsTable from './ExceptionsTable.vue'
 import { useApi } from '../composables/useApi.js'
 import { useNotificationStore } from '../stores/notification.js'
 import { useSessionStore } from '../stores/session.js'
@@ -115,7 +57,6 @@ const props = defineProps({
 // Emits
 const emit = defineEmits([
   'employee-resolve',
-  'bulk-action',
   'view-all-issues',
   'export-ready'
 ])
@@ -124,7 +65,6 @@ const emit = defineEmits([
 const loading = ref(false)
 const summary = ref({})
 const exceptions = ref([])
-const expandedCategories = ref([])
 const summaryCardRef = ref(null)
 
 // Services
@@ -233,164 +173,18 @@ const statusType = computed(() => {
 
 const actionButtons = computed(() => {
   const buttons = []
-  
   if (summary.value.ready_for_pvault > 0) {
-    buttons.push({
-      key: 'export-pvault',
-      label: 'Export pVault CSV',
-      type: 'success',
-      disabled: false
-    })
+    buttons.push({ key: 'export-pvault', label: 'Export pVault CSV', type: 'success', disabled: false })
   }
-  
   if (summary.value.need_attention > 0) {
-    buttons.push({
-      key: 'view-issues',
-      label: 'View All Issues',
-      type: 'primary',
-      disabled: false
-    })
+    buttons.push({ key: 'view-issues', label: 'View All Issues', type: 'primary', disabled: false })
   }
-  
   return buttons
 })
 
-const hasIssues = computed(() => {
-  return summary.value.need_attention > 0
-})
 
-const showExceptionDetails = computed(() => {
-  return hasIssues.value && exceptions.value.length > 0
-})
+const showExceptionDetails = computed(() => exceptions.value.length > 0)
 
-const issueCategories = computed(() => {
-  const categories = []
-  const breakdown = summary.value.issues_breakdown || {}
-  
-  if (breakdown.missing_receipts > 0) {
-    const employees = exceptions.value
-      .filter(emp => emp.issue_category === 'missing_receipts')
-      .map(emp => ({
-        ...emp,
-        severity: emp.severity || 'high',
-        details: [
-          { key: 'amount', label: 'Amount', value: emp.amount || 'N/A' },
-          { key: 'date', label: 'Date', value: emp.transaction_date || 'N/A' },
-          { key: 'vendor', label: 'Vendor', value: emp.vendor || 'N/A' }
-        ],
-        quickActions: [
-          { key: 'upload-receipt', label: 'Upload Receipt', type: 'upload' },
-          { key: 'mark-exempt', label: 'Mark Exempt', type: 'edit' }
-        ]
-      }))
-    
-    categories.push({
-      key: 'missing_receipts',
-      name: 'Missing Receipts',
-      description: 'Employees without receipt data',
-      type: 'error',
-      count: breakdown.missing_receipts,
-      employees
-    })
-  }
-  
-  if (breakdown.coding_incomplete > 0) {
-    const employees = exceptions.value
-      .filter(emp => emp.issue_category === 'coding_issues')
-      .map(emp => ({
-        ...emp,
-        severity: emp.severity || 'medium',
-        details: [
-          { key: 'category', label: 'Category', value: emp.expense_category || 'Unassigned' },
-          { key: 'amount', label: 'Amount', value: emp.amount || 'N/A' },
-          { key: 'suggested', label: 'Suggested', value: emp.suggested_category || 'N/A' }
-        ],
-        quickActions: [
-          { key: 'auto-code', label: 'Auto-Code', type: 'edit' },
-          { key: 'manual-code', label: 'Manual Code', type: 'edit' }
-        ]
-      }))
-    
-    categories.push({
-      key: 'coding_issues',
-      name: 'Coding Issues',
-      description: 'Incomplete expense coding',
-      type: 'warning',
-      count: breakdown.coding_incomplete,
-      employees
-    })
-  }
-  
-  if (breakdown.data_mismatches > 0) {
-    const employees = exceptions.value
-      .filter(emp => emp.issue_category === 'data_mismatches')
-      .map(emp => ({
-        ...emp,
-        severity: emp.severity || 'high',
-        details: [
-          { key: 'car_amount', label: 'CAR Amount', value: emp.car_amount || 'N/A' },
-          { key: 'receipt_amount', label: 'Receipt Amount', value: emp.receipt_amount || 'N/A' },
-          { key: 'difference', label: 'Difference', value: emp.difference || 'N/A' }
-        ],
-        quickActions: [
-          { key: 'accept-car', label: 'Accept CAR', type: 'edit' },
-          { key: 'accept-receipt', label: 'Accept Receipt', type: 'edit' },
-          { key: 'manual-review', label: 'Manual Review', type: 'view' }
-        ]
-      }))
-    
-    categories.push({
-      key: 'data_mismatches',
-      name: 'Data Mismatches',
-      description: 'CAR vs Receipt discrepancies',
-      type: 'error',
-      count: breakdown.data_mismatches,
-      employees
-    })
-  }
-  
-  return categories
-})
-
-const quickActions = computed(() => {
-  const actions = []
-  const breakdown = summary.value.issues_breakdown || {}
-  
-  if (breakdown.missing_receipts > 0) {
-    actions.push({
-      key: 'bulk-upload-receipts',
-      type: 'upload',
-      title: 'Bulk Upload Receipts',
-      description: 'Upload missing receipt files',
-      count: breakdown.missing_receipts,
-      disabled: false
-    })
-  }
-  
-  if (breakdown.coding_incomplete > 0) {
-    actions.push({
-      key: 'auto-code-expenses',
-      type: 'auto',
-      title: 'Auto-Code Expenses',
-      description: 'Apply standard expense codes',
-      count: breakdown.coding_incomplete,
-      disabled: false
-    })
-  }
-  
-  if (breakdown.data_mismatches > 0) {
-    actions.push({
-      key: 'resolve-mismatches',
-      type: 'fix',
-      title: 'Resolve Mismatches',
-      description: 'Review amount discrepancies',
-      count: breakdown.data_mismatches,
-      disabled: false
-    })
-  }
-  
-  return actions
-})
 
 // Methods
 const getReadinessPercentage = () => {
@@ -462,16 +256,10 @@ const handleExpandChange = (expanded) => {
   }
 }
 
-const handleCategoryExpandChange = (categoryKey, expanded) => {
-  const index = expandedCategories.value.indexOf(categoryKey)
-  if (expanded && index === -1) {
-    expandedCategories.value.push(categoryKey)
-  } else if (!expanded && index > -1) {
-    expandedCategories.value.splice(index, 1)
-  }
-}
 
-const handleResolveEmployee = (employee) => {
+// Employee resolution handler
+const handleEmployeeResolve = (employee) => {
+  // Emit event to parent component to handle resolution modal
   emit('employee-resolve', employee)
 }
 
@@ -483,37 +271,7 @@ const handleShowAllIssues = (category) => {
   })
 }
 
-const handleQuickAction = ({ employee, action }) => {
-  // Handle individual quick actions on employees
-  emit('bulk-action', { 
-    ...action, 
-    employees: [employee],
-    type: 'individual'
-  })
-}
 
-const handleBulkResolve = (employees) => {
-  // Handle bulk resolution of multiple employees
-  emit('bulk-action', {
-    key: 'bulk-resolve',
-    type: 'bulk',
-    employees: employees,
-    title: 'Bulk Resolve Issues',
-    description: `Resolve issues for ${employees.length} employees`
-  })
-}
-
-// Icon methods
-const getCategoryIcon = (type) => {
-  const icons = {
-    error: 'ExclamationCircleIcon',
-    warning: 'ExclamationTriangleIcon',
-    success: 'CheckCircleIcon'
-  }
-  return icons[type] || 'InformationCircleIcon'
-}
-
-// Icons are now inline SVG elements in the template
 
 // Lifecycle
 onMounted(() => {
@@ -579,76 +337,13 @@ onMounted(() => {
   @apply space-y-4;
 }
 
-.quick-actions-panel {
-  @apply bg-white rounded-xl shadow-lg border border-gray-200 p-6;
-}
 
-.quick-actions-header {
-  @apply mb-4;
-}
-
-.quick-actions-grid {
-  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
-}
-
-.quick-action-card {
-  @apply flex items-start gap-4 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 text-left;
-}
-
-.quick-action-card:disabled {
-  @apply opacity-50 cursor-not-allowed hover:border-gray-200 hover:shadow-none;
-}
-
-.action-upload {
-  @apply hover:border-green-300 hover:bg-green-50;
-}
-
-.action-auto {
-  @apply hover:border-purple-300 hover:bg-purple-50;
-}
-
-.action-fix {
-  @apply hover:border-orange-300 hover:bg-orange-50;
-}
-
-.action-icon {
-  @apply flex-shrink-0 w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center;
-}
-
-.action-upload .action-icon {
-  @apply bg-green-100 text-green-600;
-}
-
-.action-auto .action-icon {
-  @apply bg-purple-100 text-purple-600;
-}
-
-.action-fix .action-icon {
-  @apply bg-orange-100 text-orange-600;
-}
-
-.action-content {
-  @apply flex-1;
-}
-
-.action-title {
-  @apply font-semibold text-gray-900 mb-1;
-}
-
-.action-description {
-  @apply text-sm text-gray-600 mb-1;
-}
-
-.action-count {
-  @apply text-xs text-gray-500 font-medium;
+.exception-details {
+  @apply mt-4;
 }
 
 /* Mobile responsive adjustments */
 @media (max-width: 640px) {
-  .quick-actions-grid {
-    @apply grid-cols-1;
-  }
-  
   .category-header {
     @apply flex-col items-start gap-3;
   }

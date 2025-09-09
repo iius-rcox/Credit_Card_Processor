@@ -15,7 +15,10 @@ from enum import Enum
 class SessionStatus(str, Enum):
     """Session status enumeration"""
     PENDING = "pending"
+    UPLOADING = "uploading"
     PROCESSING = "processing"
+    EXTRACTING = "extracting"
+    ANALYZING = "analyzing"
     PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -336,9 +339,12 @@ class SessionStatusResponse(BaseModel):
     # Progress statistics
     total_employees: int = Field(..., ge=0, description="Total number of employees")
     percent_complete: int = Field(..., ge=0, le=100, description="Processing completion percentage")
-    completed_employees: int = Field(..., ge=0, description="Number of completed employees")
+    completed_employees: int = Field(..., ge=0, description="Number of employees processed (all statuses)")
+    ready_for_export: int = Field(..., ge=0, description="Number of employees ready for export (VALID + RESOLVED)")
+    valid_employees: int = Field(..., ge=0, description="Number of valid employees")
     processing_employees: int = Field(..., ge=0, description="Number of employees currently processing")
     issues_employees: int = Field(..., ge=0, description="Number of employees with issues")
+    resolved_employees: int = Field(..., ge=0, description="Number of resolved employees")
     pending_employees: int = Field(..., ge=0, description="Number of employees pending processing")
     
     # Time estimates

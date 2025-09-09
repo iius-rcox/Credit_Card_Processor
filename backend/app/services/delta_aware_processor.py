@@ -378,7 +378,8 @@ class DeltaAwareProcessor:
             await update_session_status(
                 self.db, str(session.session_id), 
                 SessionStatus.PROCESSING, 
-                total_employees=change_analysis['total_employees']
+                total_employees=change_analysis['total_employees'],
+                processed_employees=0  # Start at 0 for proper progress tracking
             )
             
             # Determine processing strategy
@@ -453,6 +454,14 @@ class DeltaAwareProcessor:
                     if employee_result:
                         processed_count += 1
                         processing_state["current_employee_index"] = processed_count + skipped_count
+                        
+                        # Update session's processed_employees counter for progress tracking
+                        if processed_count % 10 == 0 or processed_count == len(employees_to_process):  # Update every 10 employees or at end
+                            await update_session_status(
+                                self.db, str(session.session_id),
+                                SessionStatus.PROCESSING,
+                                processed_employees=processed_count + skipped_count  # Include skipped in total processed
+                            )
                         
                         # Log delta-specific information
                         if change_type in ['modified', 'new']:

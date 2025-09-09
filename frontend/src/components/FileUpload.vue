@@ -439,7 +439,7 @@
                 d="M13 10V3L4 14h7v7l9-11h-7z"
               />
             </svg>
-            {{ isProcessingStarted ? 'Starting...' : 'Start Processing' }}
+            {{ isProcessingStarted ? 'Started' : 'Start Processing' }}
           </button>
         </div>
       </div>
