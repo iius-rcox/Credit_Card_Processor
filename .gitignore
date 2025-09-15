@@ -79,3 +79,6 @@ backups/
 
 # Exposed credentials in production environment should not be committed
 .env.production
+
+# Windows reserved filenames
+nul
