@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     version: str = "1.0.0"
     debug: bool = False
     
+    # Enhanced Logging Configuration
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    enable_request_logging: bool = Field(default=True, alias="ENABLE_REQUEST_LOGGING")
+    enable_database_logging: bool = Field(default=False, alias="ENABLE_DATABASE_LOGGING")
+    enable_performance_logging: bool = Field(default=False, alias="ENABLE_PERFORMANCE_LOGGING")
+    log_format: str = Field(default="text", alias="LOG_FORMAT")  # "text" or "json"
+    request_id_header: str = Field(default="X-Request-ID", alias="REQUEST_ID_HEADER")
+    
     # Database
     database_path: str = "./data/database.db"
     
@@ -24,6 +32,10 @@ class Settings(BaseSettings):
     
     # Processing
     max_employees: int = 100
+    # Line-level feature flags
+    lines_enabled: bool = Field(default=False, alias="LINES_ENABLED")
+    line_matching_enabled: bool = Field(default=False, alias="LINE_MATCHING_ENABLED")
+    include_raw_excerpts: bool = Field(default=False, alias="INCLUDE_RAW_EXCERPTS")
     
     # Authentication & Security
     # Admin users loaded from environment variable (comma-separated)

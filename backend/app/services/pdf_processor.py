@@ -117,6 +117,42 @@ class CARProcessor:
         except Exception as e:
             logger.error(f"Failed to process CAR document {pdf_path}: {str(e)}")
             raise PDFProcessorError(f"CAR processing failed: {str(e)}")
+
+    def collect_car_lines(self, pdf_path: str) -> List[Dict[str, Any]]:
+        """
+        Collect basic line-like entries per employee from CAR by using section totals
+        when true transaction lines are unavailable. Emits up to three pseudo-lines
+        per employee: Fuel, Maintenance, and Total.
+        """
+        employees = self.parse_car_document(pdf_path)
+        lines: List[Dict[str, Any]] = []
+        for emp_key, info in employees.items():
+            employee_name = info.get('employee_name')
+            employee_id = info.get('employee_id')
+            page_range = info.get('car_page_range') or []
+            def add_line(amount: Optional[float], category: str, descriptor: str):
+                if amount is None:
+                    return
+                try:
+                    amt = float(amount)
+                except Exception:
+                    return
+                if amt <= 0:
+                    return
+                lines.append({
+                    'employee_name': employee_name,
+                    'employee_id': employee_id,
+                    'amount': round(amt, 2),
+                    'amount_cents': int(round(amt * 100)),
+                    'category': category,
+                    'descriptor': descriptor,
+                    'page_range': page_range,
+                    'source': 'car',
+                })
+            add_line(info.get('fuel_total'), 'Fuel', 'Fuel total')
+            add_line(info.get('maintenance_total'), 'Maintenance', 'Maintenance total')
+            add_line(info.get('car_total'), 'Total', 'Transaction total')
+        return lines
     
     def _normalize_text(self, text: str) -> str:
         """
@@ -392,6 +428,88 @@ class ReceiptProcessor:
         except Exception as e:
             logger.error(f"Failed to process Receipt document {pdf_path}: {str(e)}")
             raise PDFProcessorError(f"Receipt processing failed: {str(e)}")
+
+    def collect_receipt_entries(self, pdf_path: str) -> List[Dict[str, Any]]:
+        """
+        Public helper to extract individual receipt entries with basic enrichment
+        (amount_cents, simple vendor/date candidates, category normalization).
+        """
+        entries = self._extract_receipt_entries_from_pdf(pdf_path)
+        enriched: List[Dict[str, Any]] = []
+        for e in entries:
+            amount = float(e.get('amount') or 0)
+            amount_cents = int(round(amount * 100))
+            text = e.get('page_text_preview') or ''
+            vendor = self._extract_vendor_candidate(text)
+            date_cand = self._extract_date_candidate(text)
+            category = self._normalize_category(e.get('expense_category'))
+            enriched.append({
+                **e,
+                'amount': round(amount, 2),
+                'amount_cents': amount_cents,
+                'vendor_candidate': vendor,
+                'date_candidate': date_cand,
+                'category': category,
+                # raw_excerpt kept in preview field; upstream can drop for responses
+                'raw_excerpt': text[:400]
+            })
+        return enriched
+
+    def _extract_receipt_entries_from_pdf(self, pdf_path: str) -> List[Dict[str, Any]]:
+        """Open PDF and reuse page extraction logic to build entries quickly."""
+        try:
+            doc = fitz.open(pdf_path)
+            page_text_mapping: Dict[int, str] = {}
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                page_text = page.get_text("dict")
+                extracted_text = ""
+                for block in page_text.get("blocks", []):
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                t = span.get("text", "")
+                                if t.strip():
+                                    extracted_text += t + " "
+                            extracted_text += "\n"
+                extracted_text = self._normalize_text(extracted_text)
+                page_text_mapping[page_num + 1] = extracted_text
+            doc.close()
+            # Reuse existing logic on mapping
+            full_text = "\n".join([f"--- PAGE {p} ---\n" + txt for p, txt in page_text_mapping.items()])
+            return self._extract_receipt_entries(full_text, page_text_mapping)
+        except Exception as e:
+            logger.warning(f"collect_receipt_entries failed: {e}")
+            return []
+
+    def _extract_vendor_candidate(self, text: str) -> Optional[str]:
+        # Heuristic: first 2 capitalized tokens not common words
+        tokens = re.findall(r"[A-Za-z0-9]+", text.upper())
+        stop = {"THE", "AND", "OF", "FOR", "TO", "IN"}
+        toks = [t for t in tokens if t not in stop]
+        return " ".join(toks[:2]) if toks else None
+
+    def _extract_date_candidate(self, text: str) -> Optional[str]:
+        m = re.search(r"\b(\d{1,2}[\-/]\d{1,2}[\-/]\d{2,4})\b", text)
+        return m.group(1) if m else None
+
+    def _normalize_category(self, cat: Optional[str]) -> Optional[str]:
+        if not cat:
+            return None
+        c = cat.strip().lower()
+        if 'fuel' in c:
+            return 'Fuel'
+        if 'maint' in c:
+            return 'Maintenance'
+        if 'meal' in c or 'entertain' in c:
+            return 'Meals & Entertainment'
+        if 'travel' in c:
+            return 'Travel'
+        if 'office' in c:
+            return 'Office Supplies'
+        if 'general' in c:
+            return 'General Expense'
+        return cat
     
     def _normalize_text(self, text: str) -> str:
         """

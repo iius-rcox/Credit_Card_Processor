@@ -1,0 +1,495 @@
+Employee_ID,Employee_Name,Department,Amount,Receipt_Total,Processing_Date,Validation_Status
+496407,CHARLESBARROW,,475.81,475.81,2025-09-10,valid
+907971,ANDREWCOLLINS,,157.42,157.42,2025-09-10,valid
+373843,RUSSELLAYDELL,,42.82,42.82,2025-09-10,valid
+754636,HEIDICHAUVIN,,346.72,346.72,2025-09-10,valid
+746330,THOMASMANCIL,,265.92,265.92,2025-09-10,valid
+510549,BALDEMARVILLASENOR,,240.0,240.0,2025-09-10,valid
+157101,"Aaron Cortez
+General Expense",,0.0,7.11,2025-09-10,valid
+157159,"Adam Wilcox
+Medical",,0.0,85.55,2025-09-10,valid
+157159,"Adam Wilcox
+Fuel",,0.0,131.34,2025-09-10,valid
+157159,"Adam Wilcox
+Business Services",,0.0,299.45,2025-09-10,valid
+157159,Adam Wilcox,,0.0,166.06,2025-09-10,valid
+157110,"Adolfo Garza
+Fuel",,0.0,308.53,2025-09-10,valid
+157110,"Adolfo Garza
+Maintenance",,0.0,102.16,2025-09-10,valid
+157110,"Adolfo Garza
+General Expense",,0.0,143.99,2025-09-10,valid
+157149,Alan Stricklen,,0.0,355.97,2025-09-10,valid
+157149,"Alan Stricklen
+General Expense",,0.0,560.99,2025-09-10,valid
+157149,"Alan Stricklen
+Fuel",,0.0,65.57,2025-09-10,valid
+157149,"Alan Stricklen
+Business Services",,0.0,216.35,2025-09-10,valid
+157106,"Ben Felterman
+Fuel",,0.0,10.81,2025-09-10,valid
+157106,Ben Felterman,,0.0,184.82,2025-09-10,valid
+157106,"Ben Felterman
+Airfare",,0.0,602.96,2025-09-10,valid
+157106,"Ben Felterman
+Business Services",,0.0,508.0,2025-09-10,valid
+157106,"Ben Felterman
+Rental Car",,0.0,99.41,2025-09-10,valid
+176945,"Blaine Gulotta
+Fuel",,0.0,201.8,2025-09-10,valid
+176945,"Blaine Gulotta
+Maintenance",,0.0,377.31,2025-09-10,valid
+157118,"Blaize Hotard
+General Expense",,0.0,1157.0,2025-09-10,valid
+186097,"Bobby Vice
+General Expense",,0.0,169.08,2025-09-10,valid
+157160,"Brian Kumfer
+General Expense",,0.0,108.0,2025-09-10,valid
+181791,"Britt Schexnaider
+Fuel",,0.0,134.32,2025-09-10,valid
+157134,"Carey Ordoyne
+Fuel",,0.0,10.55,2025-09-10,valid
+157134,"Carey Ordoyne
+General Expense",,0.0,63.37,2025-09-10,valid
+157092,"Cary Campbell
+General Expense",,0.0,445.0,2025-09-10,valid
+178765,"Charles Blount
+General Expense",,0.0,41.81,2025-09-10,valid
+157132,"Chase Munn
+Business Services",,0.0,79.96,2025-09-10,valid
+157132,Chase Munn,,0.0,180.7,2025-09-10,valid
+157132,"Chase Munn
+Fuel",,0.0,249.45,2025-09-10,valid
+157152,Christopher Templeton,,0.0,68.63,2025-09-10,valid
+157103,"Daniel Darsey
+Business Services",,0.0,75.29,2025-09-10,valid
+157103,"Daniel Darsey
+Fuel",,0.0,87.87,2025-09-10,valid
+157103,"Daniel Darsey
+General Expense",,0.0,87.3,2025-09-10,valid
+176946,"Daniel Peoples
+Fuel",,0.0,181.36,2025-09-10,valid
+176946,"Daniel Peoples
+General Expense",,0.0,126.57,2025-09-10,valid
+176946,Daniel Peoples,,0.0,47.23,2025-09-10,valid
+176952,"Daniel Sotelo
+Business Services",,0.0,676.11,2025-09-10,valid
+157095,"David Carroll
+Business Services",,0.0,445.31,2025-09-10,valid
+157095,"David Carroll
+General Expense",,0.0,2769.68,2025-09-10,valid
+157095,David Carroll,,0.0,459.8,2025-09-10,valid
+157095,"David Carroll
+Fuel",,0.0,382.27,2025-09-10,valid
+157095,"David Carroll
+Hotel",,0.0,245.47,2025-09-10,valid
+157086,"Dean Bordelon
+Business Services",,0.0,79.22,2025-09-10,valid
+157124,"Deborah Koper
+General Expense",,0.0,86.71,2025-09-10,valid
+176951,"Eddiberto Pena
+General Expense",,0.0,166.91,2025-09-10,valid
+176951,"Eddiberto Pena
+Fuel",,0.0,115.0,2025-09-10,valid
+181332,"Eric Puentes
+Fuel",,0.0,157.61,2025-09-10,valid
+157126,Frank LaBove,,0.0,1325.1,2025-09-10,valid
+157126,"Frank LaBove
+General Expense",,0.0,610.86,2025-09-10,valid
+157126,"Frank LaBove
+Maintenance",,0.0,20.0,2025-09-10,valid
+179773,"Gilbert Encinas
+Maintenance",,0.0,557.34,2025-09-10,valid
+179773,"Gilbert Encinas
+Fuel",,0.0,517.05,2025-09-10,valid
+157087,"Giselle Boyer
+Business Services",,0.0,19.91,2025-09-10,valid
+157087,"Giselle Boyer
+General Expense",,0.0,53.36,2025-09-10,valid
+157094,"Heber Carnero Carrasco
+Fuel",,0.0,519.9,2025-09-10,valid
+157130,"Hector Lopez
+General Expense",,0.0,1493.32,2025-09-10,valid
+157130,"Hector Lopez
+Fuel",,0.0,277.24,2025-09-10,valid
+157130,"Hector Lopez
+Business Services",,0.0,960.37,2025-09-10,valid
+157130,"Hector Lopez
+Maintenance",,0.0,2105.47,2025-09-10,valid
+178054,"Herbert Crank
+Fuel",,0.0,280.53,2025-09-10,valid
+176940,"Isaac Holliday
+Fuel",,0.0,273.1,2025-09-10,valid
+176940,"Isaac Holliday
+General Expense",,0.0,51.35,2025-09-10,valid
+176940,Isaac Holliday,,0.0,137.34,2025-09-10,valid
+157084,"Jacklyn Barze
+Business Services",,0.0,144.0,2025-09-10,valid
+157127,"Jaime Leal
+General Expense",,0.0,284.8,2025-09-10,valid
+157128,"Jared Leblanc
+General Expense",,0.0,6.36,2025-09-10,valid
+157128,Jared Leblanc,,0.0,50.68,2025-09-10,valid
+157163,"Jerry Cortez
+Fuel",,0.0,12.79,2025-09-10,valid
+157163,"Jerry Cortez
+General Expense",,0.0,22.91,2025-09-10,valid
+157081,"Jesus Acevedo
+General Expense",,0.0,33.34,2025-09-10,valid
+157151,"John Tankersley
+General Expense",,0.0,2537.37,2025-09-10,valid
+157157,"John Walters
+Fuel",,0.0,143.56,2025-09-10,valid
+157157,John Walters,,0.0,2190.0,2025-09-10,valid
+157157,"John Walters
+Legal-General Expense",,0.0,1099.53,2025-09-10,valid
+157157,"John Walters
+Maintenance",,0.0,391.85,2025-09-10,valid
+157157,"John Walters
+General Expense",,0.0,145.17,2025-09-10,valid
+164158,"Jose Arredondo
+Fuel",,0.0,253.39,2025-09-10,valid
+157143,"Joseph Ruddy
+Hotel",,0.0,191.2,2025-09-10,valid
+157143,Joseph Ruddy,,0.0,59.43,2025-09-10,valid
+157161,Transaction Account Coding,,0.0,414.49,2025-09-10,valid
+157161,General Expense,,0.0,18.56,2025-09-10,valid
+157102,"Juan Cruz
+General Expense",,0.0,1914.3,2025-09-10,valid
+157102,Juan Cruz,,0.0,58.95,2025-09-10,valid
+176458,"Juan Luna
+General Expense",,0.0,36.69,2025-09-10,valid
+176458,"Juan Luna
+Business Services",,0.0,63.25,2025-09-10,valid
+157085,"Kevin Benoit
+General Expense",,0.0,1094.75,2025-09-10,valid
+157107,"Kimberly Folse
+General Expense",,0.0,74.18,2025-09-10,valid
+157107,Kimberly Folse,,0.0,1381.12,2025-09-10,valid
+157135,"Kirk Orillion
+Fuel",,0.0,234.8,2025-09-10,valid
+157135,"Kirk Orillion
+Maintenance",,0.0,65.36,2025-09-10,valid
+157135,"Kirk Orillion
+General Expense",,0.0,1800.0,2025-09-10,valid
+171305,"Lawanda Gibson
+General Expense",,0.0,190.28,2025-09-10,valid
+171305,"Lawanda Gibson
+Business Services",,0.0,820.85,2025-09-10,valid
+171305,Lawanda Gibson,,0.0,140.16,2025-09-10,valid
+157140,"Lindy Picou
+Legal-General Expense",,0.0,77.75,2025-09-10,valid
+157140,"Lindy Picou
+Hotel",,0.0,914.32,2025-09-10,valid
+157112,"Lloyd Granger
+Fuel",,0.0,173.24,2025-09-10,valid
+157112,"Lloyd Granger
+Maintenance",,0.0,129.56,2025-09-10,valid
+157112,"Lloyd Granger
+Hotel",,0.0,8105.54,2025-09-10,valid
+157100,"Manuel Cordova Jaquez
+Fuel",,0.0,388.13,2025-09-10,valid
+157100,Manuel Cordova Jaquez,,0.0,139.0,2025-09-10,valid
+157100,"Manuel Cordova Jaquez
+Maintenance",,0.0,439.0,2025-09-10,valid
+157100,"Manuel Cordova Jaquez
+Airfare",,0.0,369.71,2025-09-10,valid
+176943,"Milton Bendily
+Fuel",,0.0,115.24,2025-09-10,valid
+179777,Octavio Del Valle,,0.0,1371.21,2025-09-10,valid
+157093,Oscar Carnero,,0.0,593.61,2025-09-10,valid
+157111,Patrick Gibbens,,0.0,85.62,2025-09-10,valid
+157088,"Richard Breedlove
+General Expense",,0.0,1300.0,2025-09-10,valid
+157088,Richard Breedlove,,0.0,185.38,2025-09-10,valid
+157088,"Richard Breedlove
+Fuel",,0.0,247.47,2025-09-10,valid
+157088,"Richard Breedlove
+Maintenance",,0.0,671.0,2025-09-10,valid
+176950,Rolando Pena,,0.0,143.62,2025-09-10,valid
+176950,"Rolando Pena
+Fuel",,0.0,338.91,2025-09-10,valid
+157121,Ronald Jackson,,0.0,285.4,2025-09-10,valid
+157121,"Ronald Jackson
+Fuel",,0.0,50.0,2025-09-10,valid
+157121,"Ronald Jackson
+Hotel",,0.0,218.36,2025-09-10,valid
+157104,"Ronnie Dufrene
+General Expense",,0.0,118.17,2025-09-10,valid
+157119,Rossie Hotard,,0.0,92.83,2025-09-10,valid
+157119,"Rossie Hotard
+General Expense",,0.0,82.75,2025-09-10,valid
+182105,Ryan Courville,,0.0,168.67,2025-09-10,valid
+157156,"Salvador Viverito
+General Expense",,0.0,45.84,2025-09-10,valid
+176939,"Scott Nguyen
+General Expense",,0.0,187.92,2025-09-10,valid
+157155,Sergio Verduzco,,0.0,160.0,2025-09-10,valid
+157155,"Sergio Verduzco
+Maintenance",,0.0,64.0,2025-09-10,valid
+157155,"Sergio Verduzco
+General Expense",,0.0,116.08,2025-09-10,valid
+157122,"Spencer Jaetzold
+Business Services",,0.0,30.45,2025-09-10,valid
+157122,"Spencer Jaetzold
+General Expense",,0.0,16.37,2025-09-10,valid
+157122,Spencer Jaetzold,,0.0,1530.61,2025-09-10,valid
+157125,Terry Kraemer,,0.0,159.87,2025-09-10,valid
+157090,William Burt,,0.0,99.57,2025-09-10,valid
+157090,"William Burt
+Fuel",,0.0,149.5,2025-09-10,valid
+179907,William Worrilow,,0.0,160.54,2025-09-10,valid
+179907,"William Worrilow
+Fuel",,0.0,179.93,2025-09-10,valid
+157097,"Yesenia Chasteen
+General Expense",,0.0,496.46,2025-09-10,valid
+157097,"Yesenia Chasteen
+Business Services",,0.0,53.03,2025-09-10,valid
+496407,CHARLESBARROW,,475.81,475.81,2025-09-10,valid
+907971,ANDREWCOLLINS,,157.42,157.42,2025-09-10,valid
+373843,RUSSELLAYDELL,,42.82,42.82,2025-09-10,valid
+754636,HEIDICHAUVIN,,346.72,346.72,2025-09-10,valid
+746330,THOMASMANCIL,,265.92,265.92,2025-09-10,valid
+510549,BALDEMARVILLASENOR,,240.0,240.0,2025-09-10,valid
+157101,"Aaron Cortez
+General Expense",,0.0,7.11,2025-09-10,valid
+157159,"Adam Wilcox
+Medical",,0.0,85.55,2025-09-10,valid
+157159,"Adam Wilcox
+Fuel",,0.0,131.34,2025-09-10,valid
+157159,"Adam Wilcox
+Business Services",,0.0,299.45,2025-09-10,valid
+157159,Adam Wilcox,,0.0,166.06,2025-09-10,valid
+157110,"Adolfo Garza
+Fuel",,0.0,308.53,2025-09-10,valid
+157110,"Adolfo Garza
+Maintenance",,0.0,102.16,2025-09-10,valid
+157110,"Adolfo Garza
+General Expense",,0.0,143.99,2025-09-10,valid
+157149,Alan Stricklen,,0.0,355.97,2025-09-10,valid
+157149,"Alan Stricklen
+General Expense",,0.0,560.99,2025-09-10,valid
+157149,"Alan Stricklen
+Fuel",,0.0,65.57,2025-09-10,valid
+157149,"Alan Stricklen
+Business Services",,0.0,216.35,2025-09-10,valid
+157106,"Ben Felterman
+Fuel",,0.0,10.81,2025-09-10,valid
+157106,Ben Felterman,,0.0,184.82,2025-09-10,valid
+157106,"Ben Felterman
+Airfare",,0.0,602.96,2025-09-10,valid
+157106,"Ben Felterman
+Business Services",,0.0,508.0,2025-09-10,valid
+157106,"Ben Felterman
+Rental Car",,0.0,99.41,2025-09-10,valid
+176945,"Blaine Gulotta
+Fuel",,0.0,201.8,2025-09-10,valid
+176945,"Blaine Gulotta
+Maintenance",,0.0,377.31,2025-09-10,valid
+157118,"Blaize Hotard
+General Expense",,0.0,1157.0,2025-09-10,valid
+186097,"Bobby Vice
+General Expense",,0.0,169.08,2025-09-10,valid
+157160,"Brian Kumfer
+General Expense",,0.0,108.0,2025-09-10,valid
+181791,"Britt Schexnaider
+Fuel",,0.0,134.32,2025-09-10,valid
+157134,"Carey Ordoyne
+Fuel",,0.0,10.55,2025-09-10,valid
+157134,"Carey Ordoyne
+General Expense",,0.0,63.37,2025-09-10,valid
+157092,"Cary Campbell
+General Expense",,0.0,445.0,2025-09-10,valid
+178765,"Charles Blount
+General Expense",,0.0,41.81,2025-09-10,valid
+157132,"Chase Munn
+Business Services",,0.0,79.96,2025-09-10,valid
+157132,Chase Munn,,0.0,180.7,2025-09-10,valid
+157132,"Chase Munn
+Fuel",,0.0,249.45,2025-09-10,valid
+157152,Christopher Templeton,,0.0,68.63,2025-09-10,valid
+157103,"Daniel Darsey
+Business Services",,0.0,75.29,2025-09-10,valid
+157103,"Daniel Darsey
+Fuel",,0.0,87.87,2025-09-10,valid
+157103,"Daniel Darsey
+General Expense",,0.0,87.3,2025-09-10,valid
+176946,"Daniel Peoples
+Fuel",,0.0,181.36,2025-09-10,valid
+176946,"Daniel Peoples
+General Expense",,0.0,126.57,2025-09-10,valid
+176946,Daniel Peoples,,0.0,47.23,2025-09-10,valid
+176952,"Daniel Sotelo
+Business Services",,0.0,676.11,2025-09-10,valid
+157095,"David Carroll
+Business Services",,0.0,445.31,2025-09-10,valid
+157095,"David Carroll
+General Expense",,0.0,2769.68,2025-09-10,valid
+157095,David Carroll,,0.0,459.8,2025-09-10,valid
+157095,"David Carroll
+Fuel",,0.0,382.27,2025-09-10,valid
+157095,"David Carroll
+Hotel",,0.0,245.47,2025-09-10,valid
+157086,"Dean Bordelon
+Business Services",,0.0,79.22,2025-09-10,valid
+157124,"Deborah Koper
+General Expense",,0.0,86.71,2025-09-10,valid
+176951,"Eddiberto Pena
+General Expense",,0.0,166.91,2025-09-10,valid
+176951,"Eddiberto Pena
+Fuel",,0.0,115.0,2025-09-10,valid
+181332,"Eric Puentes
+Fuel",,0.0,157.61,2025-09-10,valid
+157126,Frank LaBove,,0.0,1325.1,2025-09-10,valid
+157126,"Frank LaBove
+General Expense",,0.0,610.86,2025-09-10,valid
+157126,"Frank LaBove
+Maintenance",,0.0,20.0,2025-09-10,valid
+179773,"Gilbert Encinas
+Maintenance",,0.0,557.34,2025-09-10,valid
+179773,"Gilbert Encinas
+Fuel",,0.0,517.05,2025-09-10,valid
+157087,"Giselle Boyer
+Business Services",,0.0,19.91,2025-09-10,valid
+157087,"Giselle Boyer
+General Expense",,0.0,53.36,2025-09-10,valid
+157094,"Heber Carnero Carrasco
+Fuel",,0.0,519.9,2025-09-10,valid
+157130,"Hector Lopez
+General Expense",,0.0,1493.32,2025-09-10,valid
+157130,"Hector Lopez
+Fuel",,0.0,277.24,2025-09-10,valid
+157130,"Hector Lopez
+Business Services",,0.0,960.37,2025-09-10,valid
+157130,"Hector Lopez
+Maintenance",,0.0,2105.47,2025-09-10,valid
+178054,"Herbert Crank
+Fuel",,0.0,280.53,2025-09-10,valid
+176940,"Isaac Holliday
+Fuel",,0.0,273.1,2025-09-10,valid
+176940,"Isaac Holliday
+General Expense",,0.0,51.35,2025-09-10,valid
+176940,Isaac Holliday,,0.0,137.34,2025-09-10,valid
+157084,"Jacklyn Barze
+Business Services",,0.0,144.0,2025-09-10,valid
+157127,"Jaime Leal
+General Expense",,0.0,284.8,2025-09-10,valid
+157128,"Jared Leblanc
+General Expense",,0.0,6.36,2025-09-10,valid
+157128,Jared Leblanc,,0.0,50.68,2025-09-10,valid
+157163,"Jerry Cortez
+Fuel",,0.0,12.79,2025-09-10,valid
+157163,"Jerry Cortez
+General Expense",,0.0,22.91,2025-09-10,valid
+157081,"Jesus Acevedo
+General Expense",,0.0,33.34,2025-09-10,valid
+157151,"John Tankersley
+General Expense",,0.0,2537.37,2025-09-10,valid
+157157,"John Walters
+Fuel",,0.0,143.56,2025-09-10,valid
+157157,John Walters,,0.0,2190.0,2025-09-10,valid
+157157,"John Walters
+Legal-General Expense",,0.0,1099.53,2025-09-10,valid
+157157,"John Walters
+Maintenance",,0.0,391.85,2025-09-10,valid
+157157,"John Walters
+General Expense",,0.0,145.17,2025-09-10,valid
+164158,"Jose Arredondo
+Fuel",,0.0,253.39,2025-09-10,valid
+157143,"Joseph Ruddy
+Hotel",,0.0,191.2,2025-09-10,valid
+157143,Joseph Ruddy,,0.0,59.43,2025-09-10,valid
+157161,Transaction Account Coding,,0.0,414.49,2025-09-10,valid
+157161,General Expense,,0.0,18.56,2025-09-10,valid
+157102,"Juan Cruz
+General Expense",,0.0,1914.3,2025-09-10,valid
+157102,Juan Cruz,,0.0,58.95,2025-09-10,valid
+176458,"Juan Luna
+General Expense",,0.0,36.69,2025-09-10,valid
+176458,"Juan Luna
+Business Services",,0.0,63.25,2025-09-10,valid
+157085,"Kevin Benoit
+General Expense",,0.0,1094.75,2025-09-10,valid
+157107,"Kimberly Folse
+General Expense",,0.0,74.18,2025-09-10,valid
+157107,Kimberly Folse,,0.0,1381.12,2025-09-10,valid
+157135,"Kirk Orillion
+Fuel",,0.0,234.8,2025-09-10,valid
+157135,"Kirk Orillion
+Maintenance",,0.0,65.36,2025-09-10,valid
+157135,"Kirk Orillion
+General Expense",,0.0,1800.0,2025-09-10,valid
+171305,"Lawanda Gibson
+General Expense",,0.0,190.28,2025-09-10,valid
+171305,"Lawanda Gibson
+Business Services",,0.0,820.85,2025-09-10,valid
+171305,Lawanda Gibson,,0.0,140.16,2025-09-10,valid
+157140,"Lindy Picou
+Legal-General Expense",,0.0,77.75,2025-09-10,valid
+157140,"Lindy Picou
+Hotel",,0.0,914.32,2025-09-10,valid
+157112,"Lloyd Granger
+Fuel",,0.0,173.24,2025-09-10,valid
+157112,"Lloyd Granger
+Maintenance",,0.0,129.56,2025-09-10,valid
+157112,"Lloyd Granger
+Hotel",,0.0,8105.54,2025-09-10,valid
+157100,"Manuel Cordova Jaquez
+Fuel",,0.0,388.13,2025-09-10,valid
+157100,Manuel Cordova Jaquez,,0.0,139.0,2025-09-10,valid
+157100,"Manuel Cordova Jaquez
+Maintenance",,0.0,439.0,2025-09-10,valid
+157100,"Manuel Cordova Jaquez
+Airfare",,0.0,369.71,2025-09-10,valid
+176943,"Milton Bendily
+Fuel",,0.0,115.24,2025-09-10,valid
+179777,Octavio Del Valle,,0.0,1371.21,2025-09-10,valid
+157093,Oscar Carnero,,0.0,593.61,2025-09-10,valid
+157111,Patrick Gibbens,,0.0,85.62,2025-09-10,valid
+157088,"Richard Breedlove
+General Expense",,0.0,1300.0,2025-09-10,valid
+157088,Richard Breedlove,,0.0,185.38,2025-09-10,valid
+157088,"Richard Breedlove
+Fuel",,0.0,247.47,2025-09-10,valid
+157088,"Richard Breedlove
+Maintenance",,0.0,671.0,2025-09-10,valid
+176950,Rolando Pena,,0.0,143.62,2025-09-10,valid
+176950,"Rolando Pena
+Fuel",,0.0,338.91,2025-09-10,valid
+157121,Ronald Jackson,,0.0,285.4,2025-09-10,valid
+157121,"Ronald Jackson
+Fuel",,0.0,50.0,2025-09-10,valid
+157121,"Ronald Jackson
+Hotel",,0.0,218.36,2025-09-10,valid
+157104,"Ronnie Dufrene
+General Expense",,0.0,118.17,2025-09-10,valid
+157119,Rossie Hotard,,0.0,92.83,2025-09-10,valid
+157119,"Rossie Hotard
+General Expense",,0.0,82.75,2025-09-10,valid
+182105,Ryan Courville,,0.0,168.67,2025-09-10,valid
+157156,"Salvador Viverito
+General Expense",,0.0,45.84,2025-09-10,valid
+176939,"Scott Nguyen
+General Expense",,0.0,187.92,2025-09-10,valid
+157155,Sergio Verduzco,,0.0,160.0,2025-09-10,valid
+157155,"Sergio Verduzco
+Maintenance",,0.0,64.0,2025-09-10,valid
+157155,"Sergio Verduzco
+General Expense",,0.0,116.08,2025-09-10,valid
+157122,"Spencer Jaetzold
+Business Services",,0.0,30.45,2025-09-10,valid
+157122,"Spencer Jaetzold
+General Expense",,0.0,16.37,2025-09-10,valid
+157122,Spencer Jaetzold,,0.0,1530.61,2025-09-10,valid
+157125,Terry Kraemer,,0.0,159.87,2025-09-10,valid
+157090,William Burt,,0.0,99.57,2025-09-10,valid
+157090,"William Burt
+Fuel",,0.0,149.5,2025-09-10,valid
+179907,William Worrilow,,0.0,160.54,2025-09-10,valid
+179907,"William Worrilow
+Fuel",,0.0,179.93,2025-09-10,valid
+157097,"Yesenia Chasteen
+General Expense",,0.0,496.46,2025-09-10,valid
+157097,"Yesenia Chasteen
+Business Services",,0.0,53.03,2025-09-10,valid

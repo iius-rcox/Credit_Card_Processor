@@ -1,0 +1,147 @@
+{
+  "checkpoint_id": "f74f457d-6012-4712-8216-51dd692d26e6",
+  "session_id": "27086518-4f88-4d10-800c-1f8b3f980af6",
+  "batch_number": 44,
+  "processed_count": 215,
+  "total_count": 242,
+  "created_at": "2025-09-10T13:49:09.000477+00:00",
+  "employee_data": [
+    {
+      "employee_id": "157088",
+      "employee_name": "Richard Breedlove\nMaintenance",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 671.0,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157088",
+        "employee_name": "Richard Breedlove\nMaintenance",
+        "receipt_amount": 671.0,
+        "receipt_page_range": [
+          399
+        ],
+        "expense_categories": [
+          "Maintenance"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "176950",
+      "employee_name": "Rolando Pena",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 143.62,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "176950",
+        "employee_name": "Rolando Pena",
+        "receipt_amount": 143.62,
+        "receipt_page_range": [
+          400
+        ],
+        "expense_categories": [
+          "Meals & Entertainment"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "176950",
+      "employee_name": "Rolando Pena\nFuel",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 338.91,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "176950",
+        "employee_name": "Rolando Pena\nFuel",
+        "receipt_amount": 338.91,
+        "receipt_page_range": [
+          401
+        ],
+        "expense_categories": [
+          "Fuel"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157121",
+      "employee_name": "Ronald Jackson",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 285.4,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157121",
+        "employee_name": "Ronald Jackson",
+        "receipt_amount": 285.4,
+        "receipt_page_range": [
+          402,
+          403,
+          404,
+          405,
+          409
+        ],
+        "expense_categories": [
+          "Meals & Entertainment"
+        ],
+        "entry_count": 5,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157121",
+      "employee_name": "Ronald Jackson\nFuel",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 50.0,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157121",
+        "employee_name": "Ronald Jackson\nFuel",
+        "receipt_amount": 50.0,
+        "receipt_page_range": [
+          406,
+          408
+        ],
+        "expense_categories": [
+          "Fuel"
+        ],
+        "entry_count": 2,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    }
+  ],
+  "validation_hash": "574735a75150f041f2f674e318d5cf42bff060609e5cbedae0b41df8ba56d77f",
+  "metadata": {}
+}

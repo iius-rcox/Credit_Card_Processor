@@ -11,18 +11,24 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 
+# Bulk operations schemas will be imported when needed
+# For now, keep them in the separate bulk_operations.py file
+
 
 class SessionStatus(str, Enum):
     """Session status enumeration"""
-    PENDING = "pending"
-    UPLOADING = "uploading"
-    PROCESSING = "processing"
-    EXTRACTING = "extracting"
-    ANALYZING = "analyzing"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    PENDING = "PENDING"
+    UPLOADING = "UPLOADING"
+    PROCESSING = "PROCESSING"
+    EXTRACTING = "EXTRACTING"
+    ANALYZING = "ANALYZING"
+    PAUSED = "PAUSED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    CLOSED = "CLOSED"
+    RECEIPT_REPROCESSING = "RECEIPT_REPROCESSING"
+    COMPARING_RECEIPTS = "COMPARING_RECEIPTS"
 
 
 class ValidationStatus(str, Enum):
@@ -150,6 +156,16 @@ class SessionResponse(BaseModel):
     processed_employees: int = Field(..., ge=0, description="Number of processed employees")
     processing_options: Dict[str, Any] = Field(..., description="Processing configuration")
     delta_session_id: Optional[str] = Field(default=None, description="Base session UUID for delta processing")
+    
+    # Receipt processing tracking
+    last_receipt_upload: Optional[datetime] = Field(default=None, description="Timestamp of last receipt file upload")
+    receipt_file_versions: int = Field(default=1, description="Number of receipt file versions processed")
+    
+    # Session closure tracking
+    is_closed: bool = Field(default=False, description="Whether the session is permanently closed")
+    closure_reason: Optional[str] = Field(default=None, description="Reason for session closure")
+    closed_by: Optional[str] = Field(default=None, description="Username who closed the session")
+    closed_at: Optional[datetime] = Field(default=None, description="Session closure timestamp")
 
 
 class SessionListResponse(BaseModel):
@@ -475,3 +491,234 @@ class ErrorResponse(BaseModel):
     detail: str = Field(..., description="Error detail message")
     error_code: Optional[str] = Field(default=None, description="Specific error code")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Error timestamp")
+
+
+# Export Tracking Schemas for Phase 3
+
+class ExportTrackingRequest(BaseModel):
+    """Request model for marking records as exported"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "export_batch_id": "batch_2024_03_01_001",
+                "employee_ids": ["emp_123", "emp_456", "emp_789"],
+                "export_type": "pvault"
+            }
+        }
+    )
+    
+    export_batch_id: str = Field(..., min_length=1, max_length=100, description="Unique batch identifier")
+    employee_ids: List[str] = Field(..., min_items=1, max_items=10000, description="List of employee revision IDs")
+    export_type: str = Field(..., description="Type of export (pvault/exceptions)")
+    
+    @field_validator('export_type')
+    @classmethod
+    def validate_export_type(cls, v):
+        if v not in ['pvault', 'exceptions']:
+            raise ValueError('export_type must be pvault or exceptions')
+        return v
+
+
+class ExportDeltaResponse(BaseModel):
+    """Response model for delta export data"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "export_type": "pvault",
+                "delta_only": True,
+                "employee_count": 25,
+                "new_employees": 20,
+                "changed_employees": 5,
+                "already_exported": 75,
+                "export_batch_id": "batch_2024_03_01_002",
+                "generated_at": "2024-03-01T10:00:00Z"
+            }
+        }
+    )
+    
+    session_id: str = Field(..., description="UUID of the session")
+    export_type: str = Field(..., description="Type of export (pvault/exceptions)")
+    delta_only: bool = Field(..., description="Whether this is a delta export")
+    employee_count: int = Field(..., ge=0, description="Number of employees in export")
+    new_employees: int = Field(..., ge=0, description="Number of new employees")
+    changed_employees: int = Field(..., ge=0, description="Number of employees with changes")
+    already_exported: int = Field(..., ge=0, description="Number of previously exported employees")
+    export_data: List[Dict[str, Any]] = Field(default_factory=list, description="Export data records")
+    export_batch_id: str = Field(..., description="Unique batch identifier for this export")
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Export generation timestamp")
+
+
+class ExportRecord(BaseModel):
+    """Individual export record for history"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "export_batch_id": "batch_2024_03_01_001",
+                "export_type": "pvault",
+                "employee_count": 100,
+                "exported_by": "rcox",
+                "export_timestamp": "2024-03-01T10:00:00Z",
+                "file_size_bytes": 51200
+            }
+        }
+    )
+    
+    export_batch_id: str = Field(..., description="Unique batch identifier")
+    export_type: str = Field(..., description="Type of export (pvault/exceptions)")
+    employee_count: int = Field(..., ge=0, description="Number of employees exported")
+    exported_by: str = Field(..., description="Username who performed the export")
+    export_timestamp: datetime = Field(..., description="When the export was completed")
+    file_size_bytes: Optional[int] = Field(default=None, ge=0, description="Size of generated file in bytes")
+
+
+class ExportHistoryResponse(BaseModel):
+    """Response model for export history"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "total_exports": 3,
+                "last_export": "2024-03-01T10:00:00Z",
+                "export_summary": {
+                    "total_employees_exported": 150,
+                    "unique_employees_exported": 100,
+                    "duplicate_exports_prevented": 50
+                }
+            }
+        }
+    )
+    
+    session_id: str = Field(..., description="UUID of the session")
+    export_history: List[ExportRecord] = Field(..., description="List of export records")
+    total_exports: int = Field(..., ge=0, description="Total number of exports performed")
+    last_export: Optional[datetime] = Field(default=None, description="Timestamp of most recent export")
+    export_summary: Dict[str, Any] = Field(default_factory=dict, description="Summary statistics")
+
+
+class ExportStatusResponse(BaseModel):
+    """Response model for export status and statistics"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "total_employees": 100,
+                "exported_employees": 75,
+                "pending_export": 25,
+                "has_export_history": True,
+                "last_export_date": "2024-03-01T10:00:00Z",
+                "export_readiness": "ready"
+            }
+        }
+    )
+    
+    session_id: str = Field(..., description="UUID of the session")
+    total_employees: int = Field(..., ge=0, description="Total employees in session")
+    exported_employees: int = Field(..., ge=0, description="Number of employees already exported")
+    pending_export: int = Field(..., ge=0, description="Number of employees pending export")
+    has_export_history: bool = Field(..., description="Whether session has any export history")
+    last_export_date: Optional[datetime] = Field(default=None, description="Date of last export")
+    export_readiness: str = Field(..., description="Export readiness status (ready/not_ready/completed)")
+    
+    @field_validator('export_readiness')
+    @classmethod
+    def validate_export_readiness(cls, v):
+        if v not in ['ready', 'not_ready', 'completed']:
+            raise ValueError('export_readiness must be ready, not_ready, or completed')
+        return v
+
+
+class ExportPerformanceMetrics(BaseModel):
+    """Performance metrics for export operations"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "total_exports": 150,
+                "success_rate": 0.98,
+                "avg_duration_seconds": 12.5,
+                "largest_export_size": 5000,
+                "system_health": "healthy"
+            }
+        }
+    )
+    
+    total_exports: int = Field(..., ge=0, description="Total number of exports performed")
+    success_rate: float = Field(..., ge=0.0, le=1.0, description="Export success rate (0.0-1.0)")
+    failure_rate: float = Field(..., ge=0.0, le=1.0, description="Export failure rate (0.0-1.0)")
+    avg_duration_seconds: float = Field(..., ge=0.0, description="Average export duration in seconds")
+    largest_export_size: int = Field(..., ge=0, description="Largest export size (number of employees)")
+    system_health: str = Field(..., description="Overall system health status")
+    recent_performance: Dict[str, Any] = Field(default_factory=dict, description="Recent performance statistics")
+    
+    @field_validator('system_health')
+    @classmethod
+    def validate_system_health(cls, v):
+        if v not in ['healthy', 'degraded', 'unhealthy', 'unknown']:
+            raise ValueError('system_health must be healthy, degraded, unhealthy, or unknown')
+        return v
+
+
+# Phase 4 Schemas
+class ReprocessReceiptsRequest(BaseModel):
+    """Request model for receipt reprocessing"""
+    session_id: str = Field(..., description="Session UUID to reprocess")
+    closure_reason: Optional[str] = Field(None, description="Reason for reprocessing")
+
+
+class ReprocessReceiptsResponse(BaseModel):
+    """Response model for receipt reprocessing"""
+    success: bool
+    version_number: int
+    changes: Dict[str, Any]
+    message: str
+
+
+class ExportSummaryResponse(BaseModel):
+    """Response model for export summary"""
+    session_id: str
+    session_name: str
+    employee_stats: Dict[str, int]
+    export_history: List[Dict[str, Any]]
+    recommendations: Dict[str, Any]
+    last_export: Optional[Dict[str, Any]]
+
+
+class DeltaExportRequest(BaseModel):
+    """Request model for delta export"""
+    export_type: str = Field(..., description="Type of export (pvault or exceptions)")
+    include_exported: bool = Field(False, description="Include previously exported records")
+    mark_as_exported: bool = Field(True, description="Mark records as exported after generation")
+
+
+class DeltaExportResponse(BaseModel):
+    """Response model for delta export"""
+    export_batch_id: str
+    export_type: str
+    employee_count: int
+    export_data: List[Dict[str, Any]]
+    statistics: Dict[str, int]
+    delta_only: bool
+    generated_at: str
+
+
+class MarkExportedRequest(BaseModel):
+    """Request model for marking records as exported"""
+    export_batch_id: str = Field(..., description="Export batch ID")
+    employee_ids: List[str] = Field(..., description="List of employee revision IDs")
+    export_type: str = Field(..., description="Type of export")
+
+
+class MarkExportedResponse(BaseModel):
+    """Response model for marking records as exported"""
+    success: bool
+    export_batch_id: str
+    marked_count: int
+    message: str
+
+
+class UserInfo(BaseModel):
+    """User information from authentication"""
+    username: str
+    is_admin: bool = False
+    display_name: Optional[str] = None
+    email: Optional[str] = None

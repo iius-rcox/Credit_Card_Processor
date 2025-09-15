@@ -8,6 +8,10 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pathlib import Path
+import contextvars
+
+# Context variable for correlation ID
+correlation_id_var = contextvars.ContextVar('correlation_id', default=None)
 
 # Configure logger
 logger = logging.getLogger("security")
@@ -25,13 +29,25 @@ security_handler.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.WARNING)
 
-# Create formatter
+# Custom filter to add correlation ID to log records
+class CorrelationIdFilter(logging.Filter):
+    def filter(self, record):
+        correlation_id = correlation_id_var.get()
+        record.correlation_id = f"[{correlation_id}]" if correlation_id else ""
+        return True
+
+# Create formatter with correlation ID
 formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    '%(asctime)s - %(name)s - %(levelname)s %(correlation_id)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 security_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
+
+# Add correlation ID filter to handlers
+correlation_filter = CorrelationIdFilter()
+security_handler.addFilter(correlation_filter)
+console_handler.addFilter(correlation_filter)
 
 # Add handlers to logger
 logger.addHandler(security_handler)
@@ -63,9 +79,15 @@ def log_authentication_attempt(
     }
     
     if success:
-        logger.info(f"Authentication SUCCESS: {username} from {ip_address} via {method}")
+        # Only log authentication success in debug mode to reduce log noise
+        logger.debug(f"Authentication SUCCESS: {username} from {ip_address} via {method}")
     else:
-        logger.warning(f"Authentication FAILED: {username} from {ip_address} via {method}")
+        # Only log authentication failures that are actual security concerns
+        # Skip routine development authentication attempts
+        if method != "windows_headers" or username != "unknown":
+            logger.warning(f"Authentication FAILED: {username} from {ip_address} via {method}")
+        else:
+            logger.debug(f"Development authentication attempt: {username} from {ip_address} via {method}")
     
     # Also log as JSON for parsing
     logger.debug(json.dumps(event))
@@ -257,6 +279,26 @@ def log_api_error(
     logger.error(f"API ERROR: {method} {endpoint_path} - {error} (Status: {status_code or 'unknown'}) User: {user or 'anonymous'}")
 
 
+def set_correlation_id(correlation_id: str) -> None:
+    """
+    Set the correlation ID for the current context.
+    
+    Args:
+        correlation_id: The correlation ID to set
+    """
+    correlation_id_var.set(correlation_id)
+
+
+def get_correlation_id() -> Optional[str]:
+    """
+    Get the current correlation ID from context.
+    
+    Returns:
+        The current correlation ID or None
+    """
+    return correlation_id_var.get()
+
+
 # Export logger for direct use if needed
 __all__ = [
     'log_authentication_attempt',
@@ -268,5 +310,7 @@ __all__ = [
     'log_shutdown_event',
     'log_api_request',
     'log_api_error',
-    'logger'
+    'logger',
+    'set_correlation_id',
+    'get_correlation_id'
 ]

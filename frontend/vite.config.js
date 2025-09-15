@@ -26,22 +26,29 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: process.env.DOCKER_ENV ? 'http://backend:8001' : 'http://localhost:8001',
+        target: process.env.DOCKER_ENV ? 'http://backend:8000' : 'http://localhost:8000',
         changeOrigin: false,
         secure: false,
         configure: (proxy, options) => {
           proxy.on('proxyReq', (proxyReq, req, res) => {
             // Set host header to match the backend's trusted hosts configuration
             // This fixes the "Invalid host header" error from TrustedHostMiddleware
-            proxyReq.setHeader('host', 'localhost:8001');
+            proxyReq.setHeader('host', 'localhost:8000');
             
             // Preserve all headers, especially authentication headers
             if (req.headers['x-dev-user']) {
               proxyReq.setHeader('x-dev-user', req.headers['x-dev-user']);
             }
+            // Preserve Windows authentication headers
+            if (req.headers['remote-user']) {
+              proxyReq.setHeader('remote-user', req.headers['remote-user']);
+            }
+            if (req.headers['x-remote-user']) {
+              proxyReq.setHeader('x-remote-user', req.headers['x-remote-user']);
+            }
             // Preserve any other authentication headers
             Object.keys(req.headers).forEach(header => {
-              if (header.startsWith('x-') || header === 'authorization') {
+              if (header.startsWith('x-') || header === 'authorization' || header.includes('user')) {
                 proxyReq.setHeader(header, req.headers[header]);
               }
             });

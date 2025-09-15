@@ -51,105 +51,172 @@
     <!-- Main Content -->
     <main id="main-content" class="container-responsive main-content" role="main">
       <div class="content-section">
-        <!-- File Upload Section (simplified workflow) -->
-        <div v-if="!sessionStore.hasSession">
-          <!-- Auto-create session for simplified workflow -->
-          <div class="p-6 text-center">
-            <h2 class="text-xl font-semibold text-gray-900 mb-4">Upload Credit Card Files</h2>
-            <p class="text-gray-600 mb-6">Upload your CAR and Receipt files to begin processing</p>
-            
-            <!-- Start New Session Button -->
-            <button
-              @click="handleNewSession"
-              class="btn-primary btn-responsive touch-friendly mb-4"
-              aria-label="Start a new processing session"
-              :disabled="sessionStore.isProcessing"
+        <!-- Results Route: render results view within layout for consistency -->
+        <div v-if="isResultsRoute" class="mb-4">
+          <button
+            class="btn-secondary btn-small touch-friendly mb-3"
+            @click="goBackToSessions"
+            aria-label="Back to Sessions"
+          >
+            ← Back to Sessions
+          </button>
+          <ResultsDisplay :session-id="resultsSessionId" />
+        </div>
+
+        <div v-else>
+        <!-- Dashboard Tabs -->
+        <div class="dashboard-tabs mb-6">
+          <div class="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+            <button 
+              @click="activeTab = 'sessions'" 
+              :class="{ 
+                'bg-white shadow-sm text-blue-600': activeTab === 'sessions',
+                'text-gray-600 hover:text-gray-900': activeTab !== 'sessions'
+              }"
+              class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors"
             >
-              Start New Session
+              <i class="icon-sessions mr-2"></i> Session Manager
+            </button>
+            <button 
+              @click="activeTab = 'upload'" 
+              :class="{ 
+                'bg-white shadow-sm text-blue-600': activeTab === 'upload',
+                'text-gray-600 hover:text-gray-900': activeTab !== 'upload'
+              }"
+              class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors"
+            >
+              <i class="icon-upload mr-2"></i> Upload Documents
+            </button>
+            <button 
+              @click="activeTab = 'exports'" 
+              :class="{ 
+                'bg-white shadow-sm text-blue-600': activeTab === 'exports',
+                'text-gray-600 hover:text-gray-900': activeTab !== 'exports'
+              }"
+              class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors"
+            >
+              <i class="icon-download mr-2"></i> Exports
             </button>
           </div>
         </div>
 
-        <!-- Active Session Content -->
-        <div v-else>
-          <!-- Session Header -->
-          <div class="card card-responsive">
-            <div class="card-header-responsive">
-              <div>
-                <h2 class="card-title-responsive text-neutral-900 mb-2">
-                  {{ sessionStore.currentSession?.session_name || 'Active Session' }}
-                </h2>
-                <div class="flex flex-wrap items-center gap-2 tablet:gap-4 text-secondary">
-                  <div class="flex items-center space-x-2">
-                    <span class="text-neutral-500">Status:</span>
-                    <span
-                      :class="getStatusBadgeClasses(sessionStore.processingStatus)"
-                      class="status-badge"
-                    >
-                      {{ formatStatus(sessionStore.processingStatus) }}
-                    </span>
+        <!-- Tab Content -->
+        <div class="tab-content">
+          <!-- Session Manager Tab -->
+          <div v-if="activeTab === 'sessions'">
+            <SessionManager />
+          </div>
+
+          <!-- Upload Tab -->
+          <div v-if="activeTab === 'upload'">
+            <!-- File Upload Section (simplified workflow) -->
+            <div v-if="!sessionStore.hasSession">
+              <!-- Auto-create session for simplified workflow -->
+              <div class="p-6 text-center">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Upload Credit Card Files</h2>
+                <p class="text-gray-600 mb-6">Upload your CAR and Receipt files to begin processing</p>
+                
+                <!-- Start New Session Button -->
+                <button
+                  @click="handleNewSession"
+                  class="btn-primary btn-responsive touch-friendly mb-4"
+                  aria-label="Start a new processing session"
+                  :disabled="sessionStore.isProcessing"
+                >
+                  Start New Session
+                </button>
+              </div>
+            </div>
+
+            <!-- Active Session Content -->
+            <div v-else>
+              <!-- Session Header -->
+              <div class="card card-responsive">
+                <div class="card-header-responsive">
+                  <div>
+                    <h2 class="card-title-responsive text-neutral-900 mb-2">
+                      {{ sessionStore.currentSession?.session_name || 'Active Session' }}
+                    </h2>
+                    <div class="flex flex-wrap items-center gap-2 tablet:gap-4 text-secondary">
+                      <div class="flex items-center space-x-2">
+                        <span class="text-neutral-500">Status:</span>
+                        <span
+                          :class="getStatusBadgeClasses(sessionStore.processingStatus)"
+                          class="status-badge"
+                        >
+                          {{ formatStatus(sessionStore.processingStatus) }}
+                        </span>
+                      </div>
+                      <div
+                        v-if="sessionStore.hasFiles"
+                        class="flex items-center space-x-2"
+                      >
+                        <span class="text-neutral-500 tablet-up">Files:</span>
+                        <span class="text-neutral-500 mobile-only">F:</span>
+                        <span class="text-neutral-900 font-medium">
+                          {{ sessionStore.uploadedFiles.length }}
+                        </span>
+                      </div>
+                      <div class="flex items-center space-x-2">
+                        <span class="text-neutral-500 tablet-up">Session ID:</span>
+                        <span class="text-neutral-500 mobile-only">ID:</span>
+                        <span class="text-neutral-900 font-mono text-small-text">
+                          {{ sessionStore.sessionId?.slice(-8) }}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div
-                    v-if="sessionStore.hasFiles"
-                    class="flex items-center space-x-2"
+                  
+                  <button
+                    @click="handleNewSession"
+                    class="btn-secondary btn-small btn-responsive touch-friendly mt-2 tablet:mt-0"
+                    aria-label="Start a new processing session"
+                    :disabled="sessionStore.isProcessing"
                   >
-                    <span class="text-neutral-500 tablet-up">Files:</span>
-                    <span class="text-neutral-500 mobile-only">F:</span>
-                    <span class="text-neutral-900 font-medium">
-                      {{ sessionStore.uploadedFiles.length }}
-                    </span>
-                  </div>
-                  <div class="flex items-center space-x-2">
-                    <span class="text-neutral-500 tablet-up">Session ID:</span>
-                    <span class="text-neutral-500 mobile-only">ID:</span>
-                    <span class="text-neutral-900 font-mono text-small-text">
-                      {{ sessionStore.sessionId?.slice(-8) }}
-                    </span>
-                  </div>
+                    New Session
+                  </button>
                 </div>
               </div>
-              
-              <button
-                @click="handleNewSession"
-                class="btn-secondary btn-small btn-responsive touch-friendly mt-2 tablet:mt-0"
-                aria-label="Start a new processing session"
-                :disabled="sessionStore.isProcessing"
-              >
-                New Session
-              </button>
+
+              <!-- File Upload Section -->
+              <FileUpload
+                :session-id="sessionStore.sessionId"
+                @upload-complete="handleUploadComplete"
+                @upload-error="handleUploadError"
+              />
+            </div>
+
+            <!-- Progress Tracker -->
+            <div v-if="sessionStore.hasFiles">
+              <ProgressTracker :session-id="sessionStore.sessionId" />
+            </div>
+
+            <!-- Results Section -->
+            <div v-if="sessionStore.hasResults">
+              <SummaryResults 
+                :session-id="sessionStore.sessionId"
+                @employee-resolve="handleEmployeeResolve"
+                @bulk-action="handleBulkAction"
+                @view-all-issues="handleViewAllIssues"
+                @export-ready="handleExportReady"
+              />
             </div>
           </div>
 
-          <!-- File Upload Section -->
-          <FileUpload
-            :session-id="sessionStore.sessionId"
-            @upload-complete="handleUploadComplete"
-            @upload-error="handleUploadError"
-          />
+          <!-- Exports Tab -->
+          <div v-if="activeTab === 'exports'">
+            <!-- Export Section -->
+            <div v-if="sessionStore.canExport">
+              <ExportActions />
+            </div>
+            <div v-else class="p-6 text-center">
+              <h2 class="text-xl font-semibold text-gray-900 mb-4">No Exports Available</h2>
+              <p class="text-gray-600 mb-6">Complete a processing session to see available exports</p>
+            </div>
+          </div>
         </div>
-
-        <!-- Progress Tracker -->
-        <div v-if="sessionStore.hasFiles">
-          <ProgressTracker :session-id="sessionStore.sessionId" />
+        <!-- End v-else wrapper for results route -->
         </div>
-
-        <!-- Results Section -->
-        <div v-if="sessionStore.hasResults">
-          <SummaryResults 
-            :session-id="sessionStore.sessionId"
-            @employee-resolve="handleEmployeeResolve"
-            @bulk-action="handleBulkAction"
-            @view-all-issues="handleViewAllIssues"
-            @export-ready="handleExportReady"
-          />
-        </div>
-
-        <!-- Export Section -->
-        <div v-if="sessionStore.canExport">
-          <ExportActions />
-        </div>
-        
-
       </div>
     </main>
 
@@ -172,7 +239,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, defineAsyncComponent } from 'vue'
+import { ref, onMounted, watch, defineAsyncComponent, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from './stores/session.js'
 import { useNotificationStore } from './stores/notification.js'
 import { useApi } from './composables/useApi.js'
@@ -181,6 +249,7 @@ import { useWebSocket } from './composables/useWebSocket.js'
 import AuthDisplay from './components/shared/AuthDisplay.vue'
 import ErrorBoundary from './components/shared/ErrorBoundary.vue'
 import NotificationContainer from './components/shared/NotificationContainer.vue'
+import SessionManager from './components/SessionManager.vue'
 
 // Lazy-load components for better performance
 const FileUpload = defineAsyncComponent({
@@ -222,6 +291,21 @@ const webSocket = useWebSocket()
 
 // Accessibility state
 const announcements = ref('')
+
+// Dashboard tab state
+const activeTab = ref('sessions')
+
+// Router integration for results route
+const route = useRoute()
+const router = useRouter()
+const isResultsRoute = computed(() => route.name === 'SessionResults')
+const resultsSessionId = computed(() => route.params.id || sessionStore.sessionId)
+
+function goBackToSessions() {
+  // Navigate back to home sessions view and ensure sessions tab is active
+  activeTab.value = 'sessions'
+  router.push({ name: 'Home' })
+}
 
 /**
  * Initialize app without auto-creating session

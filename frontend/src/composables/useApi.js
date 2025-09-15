@@ -1,11 +1,18 @@
 import { ref, inject } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useNotificationStore } from '@/stores/notification'
+import { 
+  generateCorrelationId, 
+  storeCorrelation, 
+  formatCorrelationInfo,
+  extractCorrelationId 
+} from '@/utils/correlationId'
 
 /**
  * Enhanced API integration composable for Credit Card Processor backend
  * Provides HTTP client with comprehensive error handling, retry logic, and Pinia store integration
  * Phase 2 enhancements: interceptors, retry logic, consistent error handling, performance monitoring
+ * Phase 3 enhancements: correlation IDs for end-to-end request tracking
  */
 export function useApi() {
   const store = inject('sessionStore', null) || useSessionStore()
@@ -22,7 +29,8 @@ export function useApi() {
     failedRequests: 0
   })
 
-  const apiBase = '/api' // Uses Vite proxy to backend
+  // Use environment variable for API base URL, fallback to proxy
+  const apiBase = import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api'
 
   // Retry configuration
   const RETRY_ATTEMPTS = 3
@@ -31,21 +39,39 @@ export function useApi() {
 
   /**
    * Get authentication headers for Windows authentication
+   * @param {string} correlationId - Optional correlation ID for request tracking
    * @returns {Object} Headers object
    */
-  function getAuthHeaders() {
+  function getAuthHeaders(correlationId = null) {
     const headers = {}
     
-    // Always add dev user header in local Docker deployment
-    // Check if we're in local deployment (not production server)
-    const isLocalDeployment = window.location.hostname === 'localhost' || 
-                             window.location.hostname === '127.0.0.1' ||
-                             window.location.hostname.includes('.local')
+    // Add correlation ID for request tracking
+    if (correlationId) {
+      headers['x-correlation-id'] = correlationId
+      headers['x-request-id'] = correlationId // Alternative header name for compatibility
+    }
     
-    if (isLocalDeployment) {
+    // For local development without IIS, simulate Windows authentication
+    // This will be replaced by actual Windows auth headers when deployed with IIS
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      // Simulate Windows authentication header for local development
+      // Use double backslash for proper escaping in the header value
+      headers['remote-user'] = 'INSULATIONSINC\\\\rcox'
+      headers['x-remote-user'] = 'INSULATIONSINC\\\\rcox'
+      console.debug('Adding simulated Windows auth headers for local development')
+    }
+    
+    // In development mode, always add dev user header
+    // Check if we're in development environment
+    const isDevelopment = import.meta.env.NODE_ENV === 'development' || 
+                         import.meta.env.MODE === 'development' ||
+                         import.meta.env.DEV === true
+    
+    if (isDevelopment) {
       // Use environment variable or fallback to default test user
       const devUser = import.meta.env.VITE_DEV_USER || 'rcox'
       headers['x-dev-user'] = devUser
+      console.debug('Adding dev user header:', devUser)
     }
     
     // Add any additional headers from store or context
@@ -156,6 +182,12 @@ export function useApi() {
    */
   async function request(endpoint, options = {}, attempt = 1) {
     const requestStartTime = performance.now()
+    const correlationId = generateCorrelationId()
+    
+    // Log correlation ID for debugging (only in development)
+    if (import.meta.env.DEV) {
+      console.log(`[API Request] ${options.method || 'GET'} ${endpoint} - Correlation ID: ${correlationId}`)
+    }
     
     if (attempt === 1) {
       isLoading.value = true
@@ -164,10 +196,10 @@ export function useApi() {
     }
 
     try {
-      // Request interceptor - prepare headers
+      // Request interceptor - prepare headers with correlation ID
       const defaultHeaders = {
         'Content-Type': 'application/json',
-        ...getAuthHeaders(),
+        ...getAuthHeaders(correlationId),
       }
       
       // Don't set Content-Type for FormData (let browser handle it)
@@ -202,6 +234,15 @@ export function useApi() {
         throw apiError
       }
 
+      // Extract correlation ID from response headers
+      const responseCorrelationId = response.headers.get('x-correlation-id') || 
+                                   response.headers.get('x-request-id')
+      
+      // Log correlation ID echo for debugging
+      if (import.meta.env.DEV && responseCorrelationId) {
+        console.log(`[API Response] ${options.method || 'GET'} ${endpoint} - Correlation ID: ${responseCorrelationId}`)
+      }
+      
       // Parse response based on content type
       const contentType = response.headers.get('content-type')
       let data
@@ -233,6 +274,15 @@ export function useApi() {
         performanceMetrics.value.slowRequests++
         console.warn(`Slow API request detected: ${endpoint} took ${requestTime.toFixed(2)}ms`)
       }
+      
+      // Store successful correlation for debugging
+      storeCorrelation(correlationId, {
+        endpoint,
+        method: options.method || 'GET',
+        status: response.status,
+        duration: Math.round(requestTime),
+        success: true
+      })
 
       return data
     } catch (err) {
@@ -254,6 +304,20 @@ export function useApi() {
       
       // Update error metrics
       performanceMetrics.value.failedRequests++
+      
+      // Store failed correlation for debugging
+      const requestTime = performance.now() - requestStartTime
+      storeCorrelation(correlationId, {
+        endpoint,
+        method: options.method || 'GET',
+        status: standardError.status || 0,
+        duration: Math.round(requestTime),
+        error: standardError.message,
+        success: false
+      })
+      
+      // Add correlation ID to error for tracking
+      standardError.correlationId = correlationId
       
       throw standardError
     } finally {
@@ -601,6 +665,23 @@ export function useApi() {
     })
   }
 
+  async function getEmployeeLines(sessionId, revisionId, options = {}) {
+    const params = new URLSearchParams()
+    if (options.source) params.append('source', options.source)
+    if (options.limit) params.append('limit', options.limit)
+    if (options.offset) params.append('offset', options.offset)
+    if (options.include_raw) params.append('include_raw', options.include_raw)
+    if (options.min_confidence) params.append('min_confidence', options.min_confidence)
+
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return request(`/sessions/${sessionId}/employees/${revisionId}/lines${qs}`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    })
+  }
+
   /**
    * Request interceptor for authentication and common headers
    * @param {RequestInit} options - Original request options
@@ -769,6 +850,7 @@ export function useApi() {
     // Summary and Exception Functions
     getSummary,
     getExceptions,
+    getEmployeeLines,
     
     // Utility Functions
     getAuthHeaders,

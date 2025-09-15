@@ -114,6 +114,17 @@
           <tr v-for="e in pagedRows" :key="e.revision_id" class="border-t hover:bg-gray-50" :class="getRowClass(e)">
             <td class="px-4 py-3 font-medium">
               <div class="employee-info">
+                <button
+                  class="inline-flex items-center mr-2 text-gray-600 hover:text-gray-900"
+                  @click.stop="toggleExpand(e)"
+                  :aria-expanded="isExpanded(e.revision_id) ? 'true' : 'false'"
+                  :aria-controls="`lines-${e.revision_id}`"
+                  title="Show line details"
+                >
+                  <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-90': isExpanded(e.revision_id) }" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M6 6l6 4-6 4V6z" clip-rule="evenodd" />
+                  </svg>
+                </button>
                 <div class="employee-name">{{ formatNameId(e) }}</div>
                 <div v-if="e.delta_change" class="mt-1">
                   <span
@@ -161,6 +172,21 @@
                 <span>Resolve</span>
               </button>
               <span v-else class="text-sm text-gray-500 font-medium">Resolved</span>
+            </td>
+          </tr>
+          <!-- Expanded line items row -->
+          <tr v-for="e in pagedRows" :key="`details-${e.revision_id}`" v-if="isExpanded(e.revision_id)">
+            <td :id="`lines-${e.revision_id}`" class="px-4 py-3 bg-gray-50" :colspan="8">
+              <div v-if="getLineState(e.revision_id).loading" class="py-3 text-sm text-gray-600">Loading line items…</div>
+              <div v-else-if="getLineState(e.revision_id).error" class="py-3 text-sm text-red-600">{{ getLineState(e.revision_id).error }}</div>
+              <ExceptionsLineItems
+                v-else
+                :car-lines="getLineState(e.revision_id).data.car_lines"
+                :receipt-lines="getLineState(e.revision_id).data.receipt_lines"
+                :matches="getLineState(e.revision_id).data.matches"
+                :unmatched="getLineState(e.revision_id).data.unmatched"
+                :available="getLineState(e.revision_id).data.available"
+              />
             </td>
           </tr>
           <tr v-if="pagedRows.length === 0">
@@ -226,6 +252,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import StatusBadge from './StatusBadge.vue'
+import ExceptionsLineItems from './ExceptionsLineItems.vue'
+import { useApi } from '@/composables/useApi'
 
 const props = defineProps({
   employees: { type: Array, default: () => [] },
@@ -234,6 +262,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['resolve-employee'])
+const api = useApi()
+const lineState = ref({}) // revision_id -> { loading, error, data }
+const expanded = ref(new Set())
 
 const sortBy = ref(props.defaultSort)
 const sortDir = ref('asc')
@@ -414,9 +445,38 @@ function canResolve(employee) {
 function handleResolve(employee) {
   emit('resolve-employee', employee)
 }
+
+function isExpanded(revisionId) {
+  return expanded.value.has(revisionId)
+}
+
+function getLineState(revisionId) {
+  return lineState.value[revisionId] || { loading: false, error: null, data: { car_lines: [], receipt_lines: [], matches: [], unmatched: { car: [], receipts: [] }, available: false } }
+}
+
+async function toggleExpand(employee) {
+  const id = typeof employee === 'string' ? employee : employee.revision_id
+  if (expanded.value.has(id)) {
+    expanded.value.delete(id)
+    return
+  }
+  expanded.value.add(id)
+  if (!lineState.value[id]) {
+    lineState.value[id] = { loading: true, error: null, data: null }
+    try {
+      // sessionId is provided by parent SummaryResults via prop injection or global store; fallback to store
+      const sessionId = (employee.session_id) || (window.__currentSessionId) || null
+      // If not available from employee, try to derive from location hash/parent should pass; gracefully handle
+      const resp = await api.getEmployeeLines(sessionId, id, { limit: 50, include_raw: false })
+      lineState.value[id] = { loading: false, error: null, data: resp }
+    } catch (err) {
+      lineState.value[id] = { loading: false, error: err?.message || 'Failed to load line items', data: null }
+    }
+  }
+}
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .exceptions-table {
   @apply bg-white rounded-lg border border-gray-200 overflow-hidden;
 }

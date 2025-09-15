@@ -46,6 +46,18 @@ services:
       - HSTS_MAX_AGE=${HSTS_MAX_AGE:-31536000}
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
       - RATE_LIMIT_PERIOD=${RATE_LIMIT_PERIOD:-60}
+      # Line-level features
+      - LINES_ENABLED=${LINES_ENABLED:-true}
+      - LINE_MATCHING_ENABLED=${LINE_MATCHING_ENABLED:-true}
+      - INCLUDE_RAW_EXCERPTS=${INCLUDE_RAW_EXCERPTS:-false}
+      
+      # Enhanced Debug Logging Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_REQUEST_LOGGING=${ENABLE_REQUEST_LOGGING:-true}
+      - ENABLE_DATABASE_LOGGING=${ENABLE_DATABASE_LOGGING:-false}
+      - ENABLE_PERFORMANCE_LOGGING=${ENABLE_PERFORMANCE_LOGGING:-false}
+      - LOG_FORMAT=${LOG_FORMAT:-text}
+      - REQUEST_ID_HEADER=${REQUEST_ID_HEADER:-X-Request-ID}
       
       # Hot reload settings
       - PYTHONPATH=/app

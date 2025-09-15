@@ -1,0 +1,148 @@
+{
+  "checkpoint_id": "56ef56ce-8582-4ed3-9a5f-85a0ab236435",
+  "session_id": "27086518-4f88-4d10-800c-1f8b3f980af6",
+  "batch_number": 47,
+  "processed_count": 230,
+  "total_count": 242,
+  "created_at": "2025-09-10T13:49:09.113515+00:00",
+  "employee_data": [
+    {
+      "employee_id": "157155",
+      "employee_name": "Sergio Verduzco\nGeneral Expense",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 116.08,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157155",
+        "employee_name": "Sergio Verduzco\nGeneral Expense",
+        "receipt_amount": 116.08,
+        "receipt_page_range": [
+          432,
+          433,
+          434
+        ],
+        "expense_categories": [
+          "General Expense"
+        ],
+        "entry_count": 3,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157122",
+      "employee_name": "Spencer Jaetzold\nBusiness Services",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 30.45,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157122",
+        "employee_name": "Spencer Jaetzold\nBusiness Services",
+        "receipt_amount": 30.45,
+        "receipt_page_range": [
+          438
+        ],
+        "expense_categories": [
+          "Unknown"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157122",
+      "employee_name": "Spencer Jaetzold\nFuel",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 0.0,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157122",
+        "employee_name": "Spencer Jaetzold\nFuel",
+        "receipt_amount": 0.0,
+        "receipt_page_range": [
+          439
+        ],
+        "expense_categories": [
+          "Fuel"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.NEEDS_ATTENTION",
+        "validation_flags": {
+          "missing_required_fields": true
+        }
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157122",
+      "employee_name": "Spencer Jaetzold\nGeneral Expense",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 16.37,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157122",
+        "employee_name": "Spencer Jaetzold\nGeneral Expense",
+        "receipt_amount": 16.37,
+        "receipt_page_range": [
+          440
+        ],
+        "expense_categories": [
+          "General Expense"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157122",
+      "employee_name": "Spencer Jaetzold",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 1530.61,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157122",
+        "employee_name": "Spencer Jaetzold",
+        "receipt_amount": 1530.61,
+        "receipt_page_range": [
+          441,
+          442,
+          443
+        ],
+        "expense_categories": [
+          "Meals & Entertainment"
+        ],
+        "entry_count": 3,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    }
+  ],
+  "validation_hash": "0530c52dc2a8f2334b58b9e49e89bce0ecfcfc08d330f64ede022cddaa8ea13e",
+  "metadata": {}
+}

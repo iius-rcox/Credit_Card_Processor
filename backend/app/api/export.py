@@ -767,8 +767,10 @@ async def download_auto_pvault_csv(
                 detail="Invalid filename"
             )
         
-        # Construct file path (this should be configurable in production)
-        file_path = PathLib(f"/tmp/{safe_filename}")
+        # Construct file path using proper export directory
+        from ..config import settings
+        export_dir = PathLib(settings.export_path)
+        file_path = export_dir / safe_filename
         
         if not file_path.exists():
             raise HTTPException(
@@ -847,8 +849,10 @@ async def download_auto_exception_report(
                 detail="Invalid filename"
             )
         
-        # Construct file path
-        file_path = PathLib(f"/tmp/{safe_filename}")
+        # Construct file path using proper export directory
+        from ..config import settings
+        export_dir = PathLib(settings.export_path)
+        file_path = export_dir / safe_filename
         
         if not file_path.exists():
             raise HTTPException(

@@ -161,24 +161,32 @@
 
     <!-- Error State -->
     <div v-else-if="error" class="card border-red-200 bg-red-50">
-      <div class="flex items-center space-x-3">
-        <svg
-          class="h-5 w-5 text-red-400"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            clip-rule="evenodd"
-          />
-        </svg>
-        <div>
-          <h4 class="text-sm font-medium text-red-800">
-            Failed to Load Results
-          </h4>
-          <p class="text-sm text-red-700 mt-1">{{ error }}</p>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <svg
+            class="h-5 w-5 text-red-400"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <div>
+            <h4 class="text-sm font-medium text-red-800">
+              {{ error.includes('not ready') ? 'Results Not Ready' : 'Failed to Load Results' }}
+            </h4>
+            <p class="text-sm text-red-700 mt-1">{{ error }}</p>
+          </div>
         </div>
+        <button
+          @click="refreshResults"
+          class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          🔄 Refresh
+        </button>
       </div>
     </div>
 
@@ -650,7 +658,19 @@ async function loadResults() {
     // Update session store with results
     sessionStore.setResults(response)
   } catch (err) {
-    error.value = err.message
+    // Provide specific error messages based on status and API-provided detail
+    if (err.status === 400 || err.message?.includes('not ready')) {
+      error.value = err.data?.detail || 'Results are not ready yet. The session is still processing. Please wait and refresh in a moment.'
+    } else if (err.status === 404) {
+      error.value = err.data?.detail || 'Session not found. Please check the session ID and try again.'
+    } else if (err.status === 403) {
+      error.value = err.data?.detail || 'Access denied. You do not have permission to view these results.'
+    } else if (err.status === 423) {
+      error.value = err.data?.detail || 'Results are locked while processing. Please wait for processing to complete.'
+    } else {
+      error.value = err.message || 'Failed to load results. Please try again.'
+    }
+    
     console.error('ResultsDisplay: Failed to load results:', err)
     console.error('ResultsDisplay: Error stack:', err.stack)
   } finally {

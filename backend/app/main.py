@@ -13,6 +13,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from .config import settings
 from .database import init_database
 from .logging_config import setup_logging, log_startup_event, log_shutdown_event, log_api_request, log_api_error
+from .middleware import RequestLoggingMiddleware, get_correlation_id
 from .auth import (
     get_current_user, 
     require_admin, 
@@ -29,6 +30,9 @@ from .api.processing import router as processing_router
 from .api.results import router as results_router
 from .api.export import router as export_router
 from .api.delta import router as delta_router
+from .api.phase4_endpoints import router as phase4_router
+from .api.export_tracking import router as export_tracking_router
+from .api.bulk_operations import router as bulk_operations_router
 from .websocket import websocket_endpoint
 from .cache import get_cache_stats
 from .database import engine
@@ -146,8 +150,13 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_alert_processing())
         log_startup_event("Alert processing background task started")
         
+        # Start processing timeout monitor
+        from .api.processing import start_timeout_monitor
+        start_timeout_monitor()
+        log_startup_event("Processing timeout monitor started")
+        
     except Exception as e:
-        log_startup_event("Database initialization failed", str(e))
+        log_startup_event(f"Database initialization failed: {str(e)}")
         raise
     
     log_startup_event("Application startup completed")
@@ -239,6 +248,9 @@ async def rate_limit_middleware(request: Request, call_next) -> Response:
     
     return response
 
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
+
 # Add GZip compression middleware for better performance
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
@@ -249,6 +261,9 @@ app.include_router(processing_router)
 app.include_router(results_router)
 app.include_router(export_router)
 app.include_router(delta_router)
+app.include_router(phase4_router)
+app.include_router(export_tracking_router)
+app.include_router(bulk_operations_router)
 
 # WebSocket endpoint
 app.websocket("/ws/{session_id}")(websocket_endpoint)
@@ -301,12 +316,14 @@ def get_cors_headers():
         "Remote-User",
         "HTTP-Remote-User", 
         "X-Forwarded-User",
-        "Auth-User"
+        "Auth-User",
+        "x-correlation-id",
+        "x-request-id"
     ]
     
     # Add development headers only in non-production
     if os.getenv("ENVIRONMENT", "development").lower() != "production":
-        base_headers.append("X-Dev-User")  # Development only
+        base_headers.extend(["X-Dev-User", "x-dev-user"])  # Development only - both cases
     
     return base_headers
 

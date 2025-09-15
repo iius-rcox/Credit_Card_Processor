@@ -1,0 +1,149 @@
+{
+  "checkpoint_id": "18169c76-55e5-41d5-9b89-0dcb8f33dcd5",
+  "session_id": "27086518-4f88-4d10-800c-1f8b3f980af6",
+  "batch_number": 41,
+  "processed_count": 200,
+  "total_count": 242,
+  "created_at": "2025-09-10T13:49:08.889672+00:00",
+  "employee_data": [
+    {
+      "employee_id": "157112",
+      "employee_name": "Lloyd Granger\nMaintenance",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 129.56,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157112",
+        "employee_name": "Lloyd Granger\nMaintenance",
+        "receipt_amount": 129.56,
+        "receipt_page_range": [
+          361,
+          362
+        ],
+        "expense_categories": [
+          "Maintenance"
+        ],
+        "entry_count": 2,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157112",
+      "employee_name": "Lloyd Granger\nHotel",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 8105.54,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157112",
+        "employee_name": "Lloyd Granger\nHotel",
+        "receipt_amount": 8105.54,
+        "receipt_page_range": [
+          364
+        ],
+        "expense_categories": [
+          "Unknown"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157112",
+      "employee_name": "Lloyd Granger\nGeneral Expense",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 0.0,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157112",
+        "employee_name": "Lloyd Granger\nGeneral Expense",
+        "receipt_amount": 0.0,
+        "receipt_page_range": [
+          366
+        ],
+        "expense_categories": [
+          "General Expense"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.NEEDS_ATTENTION",
+        "validation_flags": {
+          "missing_required_fields": true
+        }
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157100",
+      "employee_name": "Manuel Cordova Jaquez\nFuel",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 388.13,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157100",
+        "employee_name": "Manuel Cordova Jaquez\nFuel",
+        "receipt_amount": 388.13,
+        "receipt_page_range": [
+          368,
+          369,
+          371,
+          373,
+          375
+        ],
+        "expense_categories": [
+          "Fuel"
+        ],
+        "entry_count": 5,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    },
+    {
+      "employee_id": "157100",
+      "employee_name": "Manuel Cordova Jaquez",
+      "department": null,
+      "position": null,
+      "car_amount": null,
+      "receipt_amount": 139.0,
+      "car_data": {},
+      "receipt_data": {
+        "employee_id": "157100",
+        "employee_name": "Manuel Cordova Jaquez",
+        "receipt_amount": 139.0,
+        "receipt_page_range": [
+          370
+        ],
+        "expense_categories": [
+          "General Expense"
+        ],
+        "entry_count": 1,
+        "source": "local_pdf_processor",
+        "confidence": 0.9,
+        "validation_status": "ValidationStatus.VALID",
+        "validation_flags": {}
+      },
+      "validation_status": "ValidationStatus.NEEDS_ATTENTION"
+    }
+  ],
+  "validation_hash": "55e89b38b9f8638d454a8a364d03c03172affdc37c8db094b8603f1629179fdf",
+  "metadata": {}
+}

@@ -1,82 +1,58 @@
-import { vi } from 'vitest'
 import { config } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
+import { createPinia } from 'pinia'
+import '@testing-library/jest-dom'
 
-// Global test configuration
-beforeEach(() => {
-  // Reset all mocks before each test
-  vi.clearAllMocks()
-  
-  // Create fresh Pinia instance for each test
-  const pinia = createPinia()
-  setActivePinia(pinia)
+// Global test setup
+config.global.plugins = [createPinia()]
+
+// Mock router
+config.global.mocks = {
+  $router: {
+    push: vi.fn(),
+    replace: vi.fn(),
+    go: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn()
+  },
+  $route: {
+    path: '/',
+    name: 'Home',
+    params: {},
+    query: {},
+    meta: {}
+  }
+}
+
+// Mock composables
+vi.mock('@/composables/useApi', () => ({
+  useApi: () => ({
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn()
+  })
+}))
+
+vi.mock('@/stores/notification', () => ({
+  useNotificationStore: () => ({
+    addSuccess: vi.fn(),
+    addError: vi.fn(),
+    addInfo: vi.fn(),
+    addWarning: vi.fn()
+  })
+}))
+
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
 })
-
-// Mock global objects
-global.fetch = vi.fn()
-
-// Mock window.URL.createObjectURL
-global.URL.createObjectURL = vi.fn(() => 'mock-object-url')
-global.URL.revokeObjectURL = vi.fn()
-
-// Mock file API
-global.File = class MockFile {
-  constructor(chunks, filename, options = {}) {
-    this.name = filename
-    this.size = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
-    this.type = options.type || 'application/pdf'
-    this.lastModified = Date.now()
-  }
-}
-
-global.FileReader = class MockFileReader {
-  constructor() {
-    this.result = null
-    this.onload = null
-    this.onerror = null
-    this.readyState = 0
-  }
-
-  readAsArrayBuffer() {
-    setTimeout(() => {
-      this.readyState = 2
-      this.result = new ArrayBuffer(8)
-      if (this.onload) this.onload()
-    }, 0)
-  }
-}
-
-// Mock IntersectionObserver
-global.IntersectionObserver = vi.fn(() => ({
-  disconnect: vi.fn(),
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-}))
-
-// Mock ResizeObserver
-global.ResizeObserver = vi.fn(() => ({
-  disconnect: vi.fn(),
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-}))
-
-// Setup global Vue Test Utils configuration
-config.global.stubs = {
-  teleport: true,
-  transition: false,
-  'transition-group': false,
-}
-
-// Console warnings configuration for tests
-const originalWarn = console.warn
-console.warn = (...args) => {
-  // Suppress specific Vue warnings in tests
-  if (
-    typeof args[0] === 'string' &&
-    (args[0].includes('Vue received a Component') ||
-      args[0].includes('[Vue warn]'))
-  ) {
-    return
-  }
-  originalWarn(...args)
-}

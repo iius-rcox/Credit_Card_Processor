@@ -18,11 +18,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 # Enhanced security imports
-try:
-    import magic
-    MAGIC_AVAILABLE = True
-except ImportError:
-    MAGIC_AVAILABLE = False
+# Disabled magic library - causes hanging on Windows
+MAGIC_AVAILABLE = False
 
 # Setup logging
 logger = logging.getLogger(__name__)

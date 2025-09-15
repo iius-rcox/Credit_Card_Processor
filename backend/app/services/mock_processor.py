@@ -245,7 +245,7 @@ async def update_session_status(
     total_employees: Optional[int] = None
 ):
     """
-    Update session status and processing statistics
+    Update session status and processing statistics with retry logic
     
     Args:
         db: Database session
@@ -254,7 +254,11 @@ async def update_session_status(
         processed_employees: Optional count of processed employees
         total_employees: Optional total count of employees
     """
-    try:
+    import time
+    import sqlite3
+    from sqlalchemy.exc import SQLAlchemyError
+    
+    def perform_update():
         session_uuid = uuid.UUID(session_id)
         db_session = db.query(ProcessingSession).filter(
             ProcessingSession.session_id == session_uuid
@@ -270,12 +274,52 @@ async def update_session_status(
                 db_session.total_employees = total_employees
             
             db.commit()
-            
             logger.debug(f"Session status updated - ID: {session_id}, Status: {new_status.value}")
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to update session status for {session_id}: {str(e)}")
+        else:
+            logger.warning(f"Session not found for status update: {session_id}")
+    
+    # Retry logic for database operations
+    max_retries = 3
+    for attempt in range(max_retries + 1):
+        try:
+            perform_update()
+            return  # Success
+            
+        except (sqlite3.OperationalError, SQLAlchemyError) as e:
+            error_msg = str(e).lower()
+            
+            # Check if it's a retryable error
+            is_retryable = (
+                "database is locked" in error_msg or 
+                "database locked" in error_msg or
+                "transaction has been rolled back" in error_msg or
+                "session's transaction has been rolled back" in error_msg
+            )
+            
+            if is_retryable and attempt < max_retries:
+                wait_time = 0.1 * (2 ** attempt)  # Exponential backoff
+                logger.warning(f"Database error updating session status, retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_retries + 1}): {str(e)}")
+                
+                # Reset database session state
+                try:
+                    db.rollback()
+                    db.expunge_all()  # Clear session state
+                except Exception as reset_error:
+                    logger.warning(f"Error resetting database session: {reset_error}")
+                
+                time.sleep(wait_time)
+                continue
+            else:
+                # Non-retryable error or max retries reached
+                db.rollback()
+                logger.error(f"Failed to update session status for {session_id} after {max_retries + 1} attempts: {str(e)}")
+                break
+                
+        except Exception as e:
+            # Non-database error
+            db.rollback()
+            logger.error(f"Unexpected error updating session status for {session_id}: {str(e)}")
+            break
 
 
 def calculate_progress(processed: int, total: int = 45) -> int:

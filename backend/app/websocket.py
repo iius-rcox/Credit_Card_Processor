@@ -278,6 +278,9 @@ class ProcessingNotifier:
 # Global processing notifier
 notifier = ProcessingNotifier(manager)
 
+# Alias for backward compatibility
+websocket_manager = notifier
+
 
 async def websocket_endpoint(
     websocket: WebSocket,

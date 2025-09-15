@@ -43,7 +43,16 @@
       "Bash(BACKEND_URL=http://localhost:8001 python3 -m pytest tests/test_authentication.py tests/test_file_upload.py tests/test_export_api.py -v --tb=short)",
       "Bash(npm audit:*)",
       "Read(//tmp/**)",
-      "Bash(open http://localhost:3000)"
+      "Bash(open http://localhost:3000)",
+      "Read(//c/Users/rcox/Documents/**)",
+      "Bash(test-runner.bat check)",
+      "Bash(tasklist)",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(cmd /c:*)",
+      "Bash(wmic process:*)",
+      "Bash(powershell:*)",
+      "Bash(./test-runner.bat check)"
     ],
     "deny": [],
     "ask": []

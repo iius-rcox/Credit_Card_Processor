@@ -451,8 +451,36 @@ async function performExport(exportType, apiMethodName) {
   } catch (error) {
     console.error(`Export ${exportType} failed:`, error)
 
-    // Set error status
-    sessionStore.setExportStatus(exportType, 'error', 0, error.message)
+    // Create specific error message based on export type and error
+    let errorMessage = ''
+    
+    if (error.status === 404) {
+      // No data to export
+      switch(exportType) {
+        case 'pvault':
+          errorMessage = 'No employees ready for pVault export. Process a session first.'
+          break
+        case 'followup':
+          errorMessage = 'No employees requiring follow-up. All validations passed!'
+          break
+        case 'issues':
+          errorMessage = 'No issues found to report. Session processed successfully!'
+          break
+        default:
+          errorMessage = 'No data available for export'
+      }
+    } else if (error.status === 403) {
+      errorMessage = 'Access denied. You do not have permission to export this session.'
+    } else if (error.status === 400) {
+      errorMessage = error.message || 'Session not ready for export. Please complete processing first.'
+    } else if (error.status === 500) {
+      errorMessage = 'Server error generating export. Please try again or contact support.'
+    } else {
+      errorMessage = error.message || `Failed to generate ${exportType} export`
+    }
+
+    // Set error status with specific message
+    sessionStore.setExportStatus(exportType, 'error', 0, errorMessage)
 
     // Increment retry count
     retryCount.value[exportType] = (retryCount.value[exportType] || 0) + 1

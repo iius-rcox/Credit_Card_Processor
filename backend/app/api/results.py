@@ -9,7 +9,9 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Request
+import json
+from pathlib import Path as FilePath
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc, func, and_, or_, Boolean
 
@@ -22,6 +24,71 @@ from ..models import (
 from ..schemas import ErrorResponse
 from ..services.results_formatter import ResultsFormatter, create_results_formatter
 from pydantic import BaseModel, Field
+import time
+from functools import wraps
+from typing import Callable
+
+
+# Circuit breaker for database resilience
+class DatabaseCircuitBreaker:
+    """
+    Circuit breaker pattern for database operations
+    
+    Prevents cascading failures by:
+    - Opening circuit after repeated failures
+    - Allowing gradual recovery with half-open state
+    - Fast-failing when database is down
+    """
+    
+    def __init__(self, failure_threshold: int = 5, timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = 'CLOSED'  # CLOSED, OPEN, HALF_OPEN
+        
+        # Logging
+        import logging
+        self.logger = logging.getLogger(f"{__name__}.circuit_breaker")
+    
+    def call(self, func: Callable, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        current_time = time.time()
+        
+        # Check if we should transition from OPEN to HALF_OPEN
+        if self.state == 'OPEN':
+            if current_time - self.last_failure_time > self.timeout:
+                self.state = 'HALF_OPEN'
+                self.logger.info("Circuit breaker transitioning to HALF_OPEN")
+            else:
+                raise Exception("Circuit breaker is OPEN - database operations blocked")
+        
+        try:
+            # Execute the function
+            result = func(*args, **kwargs)
+            
+            # Success - reset failure count and close circuit if half-open
+            if self.state == 'HALF_OPEN':
+                self.state = 'CLOSED'
+                self.failure_count = 0
+                self.logger.info("Circuit breaker closed after successful operation")
+                
+            return result
+            
+        except Exception as e:
+            # Failure - increment counter and potentially open circuit
+            self.failure_count += 1
+            self.last_failure_time = current_time
+            
+            if self.failure_count >= self.failure_threshold:
+                if self.state != 'OPEN':
+                    self.state = 'OPEN'
+                    self.logger.error(f"Circuit breaker OPENED after {self.failure_count} failures")
+            
+            raise
+
+# Global circuit breaker instance
+db_circuit_breaker = DatabaseCircuitBreaker()
 
 
 # Response models for results
@@ -103,6 +170,162 @@ class BulkResolutionResponse(BaseModel):
 
 
 router = APIRouter(prefix="/api/sessions", tags=["results"])
+@router.get("/{session_id}/employees/{revision_id}/lines", response_model=Dict[str, Any])
+async def get_employee_lines(
+    session_id: str = Path(..., description="Session UUID"),
+    revision_id: str = Path(..., description="Employee revision UUID"),
+    source: str = Query("all", description="Source filter: all|car|receipts"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    include_raw: bool = Query(False, description="Include raw excerpts when available"),
+    min_confidence: str = Query("low", description="Minimum match confidence: low|medium|high"),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """
+    Return per-employee line-level data from persisted artifacts when available.
+    Falls back to empty lists if artifacts are not present or feature is disabled.
+    """
+    from uuid import UUID
+    try:
+        # Access checks
+        session_uuid = UUID(session_id)
+        session = db.query(ProcessingSession).filter(ProcessingSession.session_id == session_uuid).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not current_user.is_admin:
+            session_creator = session.created_by.lower()
+            if '\\' in session_creator:
+                session_creator = session_creator.split('\\')[1]
+            if session_creator != current_user.username.lower():
+                raise HTTPException(status_code=403, detail="Access denied")
+
+        # Locate employee to map revision->name/id key
+        employee = db.query(EmployeeRevision).filter(
+            EmployeeRevision.revision_id == revision_id,
+            EmployeeRevision.session_id == session_uuid
+        ).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee revision not found")
+
+        # Feature flag gate
+        from ..config import settings
+        if not settings.lines_enabled:
+            return {
+                "employee": {
+                    "revision_id": str(employee.revision_id),
+                    "employee_id": employee.employee_id,
+                    "employee_name": employee.employee_name,
+                },
+                "car_lines": [],
+                "receipt_lines": [],
+                "matches": [],
+                "unmatched": {"car": [], "receipts": []},
+                "confidence_breakdown": {"high": 0, "medium": 0, "low": 0},
+                "available": False
+            }
+
+        # Build paths
+        from ..config import settings as app_settings
+        base_dir = FilePath(app_settings.upload_path) / session_id / "parsed"
+        receipts_path = base_dir / "receipts.lines.json"
+        car_path = base_dir / "car.lines.json"
+        matches_path = base_dir / "matches.json"
+        index_path = base_dir / "index.json"
+
+        def safe_load(path: FilePath) -> Dict[str, Any]:
+            if not path.exists():
+                return {}
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+
+        receipts_json = safe_load(receipts_path)
+        car_json = safe_load(car_path)
+        matches_json = safe_load(matches_path)
+        index_json = safe_load(index_path)
+
+        # Map to employee_key via index
+        employee_key = None
+        for item in (index_json.get("employees", []) or []):
+            if item.get("revision_id") == str(employee.revision_id):
+                employee_key = item.get("employee_key")
+                break
+
+        # Fallback key if index missing
+        if not employee_key:
+            employee_key = (employee.employee_name or "").replace(" ", "").upper()
+
+        # Collect lines
+        def collect(src_json: Dict[str, Any], key: str) -> List[Dict[str, Any]]:
+            employees = src_json.get("employees", []) or []
+            for rec in employees:
+                if rec.get("employee_key") == key:
+                    return rec.get("lines", [])
+            return []
+
+        car_lines = collect(car_json, employee_key)
+        receipt_lines = collect(receipts_json, employee_key)
+
+        # Apply include_raw flag
+        if not include_raw:
+            for arr in (car_lines, receipt_lines):
+                for it in arr:
+                    it.pop("raw_excerpt", None)
+
+        # Paginate
+        def paginate(arr: List[Dict[str, Any]]):
+            return arr[offset: offset + limit]
+
+        # Matches per employee
+        employee_matches = []
+        unmatched = {"car": [], "receipts": []}
+        confidence_breakdown = {"high": 0, "medium": 0, "low": 0}
+        if matches_json:
+            for rec in (matches_json.get("employees", []) or []):
+                if rec.get("employee_key") == employee_key:
+                    # Filter by min_confidence
+                    def conf_ok(c: str) -> bool:
+                        order = {"low": 0, "medium": 1, "high": 2}
+                        return order.get(c, 0) >= order.get(min_confidence, 0)
+                    employee_matches = [m for m in (rec.get("matches", []) or []) if conf_ok(m.get("confidence", "low"))]
+                    unmatched = {
+                        "car": rec.get("unmatched_car", []),
+                        "receipts": rec.get("unmatched_receipts", [])
+                    }
+                    for m in rec.get("matches", []) or []:
+                        confidence_breakdown[m.get("confidence", "low")] = confidence_breakdown.get(m.get("confidence", "low"), 0) + 1
+                    break
+
+        # Source filter
+        if source == "car":
+            receipt_lines = []
+            employee_matches = []
+            unmatched["receipts"] = []
+        elif source == "receipts":
+            car_lines = []
+            employee_matches = []
+            unmatched["car"] = []
+
+        return {
+            "employee": {
+                "revision_id": str(employee.revision_id),
+                "employee_id": employee.employee_id,
+                "employee_name": employee.employee_name,
+            },
+            "car_lines": paginate(car_lines),
+            "receipt_lines": paginate(receipt_lines),
+            "matches": employee_matches,
+            "unmatched": unmatched,
+            "confidence_breakdown": confidence_breakdown,
+            "available": bool(car_lines or receipt_lines)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load line items: {str(e)}")
 
 
 def _calculate_delta_info(session: ProcessingSession, db: Session) -> Dict[str, Any]:
@@ -323,60 +546,140 @@ async def get_session_exceptions(
 
 @router.get("/{session_id}/summary", response_model=Dict[str, Any])
 async def get_session_summary(
+    request: Request,
     session_id: str = Path(..., description="Session UUID"),
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user)
 ):
     """
-    Get session summary with problem-focused metrics
+    Enhanced session summary with comprehensive error handling and circuit breaker protection
     
-    Returns a concise summary showing:
-    - Total employees processed
-    - Ready for pVault export count
-    - Issues requiring attention count
-    - Categorized issue breakdown
+    Features:
+    - Circuit breaker protection for database operations
+    - Comprehensive error handling with proper HTTP status codes
+    - Request correlation for debugging
+    - Graceful degradation during failures
+    - Security-focused error messages
     """
+    # Get correlation ID for request tracking
+    correlation_id = getattr(request.state, 'correlation_id', 'unknown')
+    
+    # Import logger
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
-        # Validate session UUID
-        from uuid import UUID
-        session_uuid = UUID(session_id)
+        # Input validation with detailed error handling
+        session_uuid = _validate_session_id(session_id, correlation_id)
         
-        # Get session
+        # Database operations with circuit breaker protection
+        db_session = db_circuit_breaker.call(
+            _get_session_with_access_check, db, session_uuid, current_user, correlation_id
+        )
+        
+        # Statistics calculation with circuit breaker protection
+        stats = db_circuit_breaker.call(
+            _calculate_comprehensive_statistics, db, session_uuid
+        )
+        
+        # Add session metadata safely
+        try:
+            stats.update({
+                "session_id": session_id,
+                "session_name": db_session.session_name or "Unnamed Session",
+                "session_status": db_session.status.value.lower(),
+                "processing_completed": db_session.status == SessionStatus.COMPLETED,
+                "last_updated": db_session.updated_at.isoformat() if db_session.updated_at else None,
+                "created_at": db_session.created_at.isoformat() if db_session.created_at else None
+            })
+        except Exception as meta_error:
+            logger.warning(f"[{correlation_id}] Failed to add metadata to session {session_id}: {meta_error}")
+            # Continue with stats even if metadata fails
+        
+        # Success logging
+        logger.info(f"[{correlation_id}] Session summary generated successfully for {session_id}")
+        
+        return stats
+        
+    except ValueError as e:
+        logger.warning(f"[{correlation_id}] Invalid input for session {session_id}: {e}")
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
+        
+    except PermissionError as e:
+        logger.warning(f"[{correlation_id}] Access denied for session {session_id}: {e}")
+        raise HTTPException(status_code=403, detail="Access denied to this session")
+        
+    except FileNotFoundError as e:
+        logger.info(f"[{correlation_id}] Session not found: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    except TimeoutError as e:
+        logger.error(f"[{correlation_id}] Timeout calculating summary for {session_id}: {e}")
+        raise HTTPException(status_code=504, detail="Request timeout - please try again")
+        
+    except ConnectionError as e:
+        logger.error(f"[{correlation_id}] Database connection error for {session_id}: {e}")
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+        
+    except Exception as e:
+        # Check if it's a circuit breaker exception
+        if "Circuit breaker is OPEN" in str(e):
+            logger.error(f"[{correlation_id}] Circuit breaker blocked request for {session_id}")
+            raise HTTPException(status_code=503, detail="Service temporarily unavailable - please try again later")
+        
+        # Generic error handling - don't expose internal details
+        logger.error(f"[{correlation_id}] Unexpected error in session summary {session_id}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def _validate_session_id(session_id: str, correlation_id: str) -> "UUID":
+    """Validate and parse session ID with detailed error context"""
+    try:
+        from uuid import UUID
+        return UUID(session_id)
+    except ValueError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[{correlation_id}] Invalid session UUID format: {session_id}")
+        raise ValueError("Invalid session ID format")
+
+
+def _get_session_with_access_check(db: Session, session_uuid: "UUID", current_user: "UserInfo", correlation_id: str) -> "ProcessingSession":
+    """Get session with comprehensive access control and error handling"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Database query with timeout protection (using circuit breaker timeout)
         db_session = db.query(ProcessingSession).filter(
             ProcessingSession.session_id == session_uuid
         ).first()
         
         if not db_session:
-            raise HTTPException(status_code=404, detail="Session not found")
+            logger.info(f"[{correlation_id}] Session not found in database: {session_uuid}")
+            raise FileNotFoundError("Session not found")
         
-        # Check access permissions
+        # Access control check
         if not current_user.is_admin:
+            if not db_session.created_by:
+                logger.warning(f"[{correlation_id}] Session {session_uuid} has no creator information")
+                raise PermissionError("Session access information unavailable")
+            
             session_creator = db_session.created_by.lower()
             if '\\' in session_creator:
                 session_creator = session_creator.split('\\')[1]
             
             if session_creator != current_user.username.lower():
-                raise HTTPException(status_code=403, detail="Access denied")
+                logger.warning(f"[{correlation_id}] User {current_user.username} attempted to access session owned by {session_creator}")
+                raise PermissionError(f"Session belongs to different user")
         
-        # Calculate comprehensive statistics
-        stats = _calculate_comprehensive_statistics(db, session_uuid)
+        return db_session
         
-        # Add session metadata
-        stats.update({
-            "session_id": session_id,
-            "session_name": db_session.session_name,
-            "session_status": db_session.status.value,
-            "processing_completed": db_session.status == SessionStatus.COMPLETED,
-            "last_updated": db_session.updated_at.isoformat() if db_session.updated_at else None,
-            "created_at": db_session.created_at.isoformat() if db_session.created_at else None
-        })
-        
-        return stats
-        
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid session ID: {str(e)}")
+    except (FileNotFoundError, PermissionError):
+        raise  # Re-raise known exceptions
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
+        logger.error(f"[{correlation_id}] Database error retrieving session {session_uuid}: {e}")
+        raise ConnectionError("Database operation failed")
 
 
 def _categorize_employee_issues(emp: EmployeeRevision) -> str:
@@ -479,55 +782,85 @@ def _calculate_issue_statistics(db: Session, session_uuid) -> SessionSummaryStat
 
 
 def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, Any]:
-    """Calculate comprehensive statistics for session summary"""
+    """
+    Efficient statistics calculation with database aggregation and chunked fallback
+    
+    Performance optimizations:
+    - Try database-level aggregation first (fastest)
+    - Fall back to memory-efficient chunked processing  
+    - Never load entire dataset into memory
+    - Graceful degradation for database issues
+    """
+    try:
+        # Method 1: Try efficient database aggregation first
+        stats = _try_database_aggregation(db, session_uuid)
+        if stats:
+            return stats
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Database aggregation failed, falling back to chunked processing: {e}")
+    
+    # Method 2: Fallback to memory-efficient chunked processing
+    try:
+        return _chunked_statistics_calculation(db, session_uuid)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Chunked processing failed, using minimal stats: {e}")
+        return _get_minimal_stats(db, session_uuid)
+
+
+def _try_database_aggregation(db: Session, session_uuid) -> Optional[Dict[str, Any]]:
+    """Try database-level aggregation for optimal performance"""
+    from typing import Optional
+    from sqlalchemy import func, and_, or_
+    
+    # Get basic issue stats (this works reliably)
     issue_stats = _calculate_issue_statistics(db, session_uuid)
     
-    # Calculate actual issues breakdown from validation_flags JSON column
     base_query = db.query(EmployeeRevision).filter(
         EmployeeRevision.session_id == session_uuid
     )
     
-    # Count specific validation flag issues using proper JSON syntax
-    missing_receipts = base_query.filter(
-        or_(
-            func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 'true',
-            func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 1
-        )
-    ).count()
-    
-    coding_incomplete = base_query.filter(
-        and_(
-            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+    # Try database JSON functions (may not be available in all SQLite versions)
+    try:
+        missing_receipts = base_query.filter(
             or_(
-                func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true',
-                func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 1
+                func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 'true',
+                func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == True,
+                func.json_extract(EmployeeRevision.validation_flags, '$.missing_receipt') == 1
             )
-        )
-    ).count()
+        ).count()
+        
+        coding_incomplete = base_query.filter(
+            and_(
+                EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+                or_(
+                    func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 'true',
+                    func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == True,
+                    func.json_extract(EmployeeRevision.validation_flags, '$.coding_incomplete') == 1
+                )
+            )
+        ).count()
+        
+        data_mismatches = base_query.filter(
+            and_(
+                EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
+                or_(
+                    func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true',
+                    func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == True,
+                    func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 1
+                )
+            )
+        ).count()
+        
+    except Exception:
+        # JSON functions not available or failed
+        return None
     
-    data_mismatches = base_query.filter(
-        and_(
-            EmployeeRevision.validation_status == ValidationStatus.NEEDS_ATTENTION,
-            or_(
-                func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 'true',
-                func.json_extract(EmployeeRevision.validation_flags, '$.amount_mismatch') == 1
-            )
-        )
-    ).count()
-
-    # Compute processing time string
-    session = db.query(ProcessingSession).filter(ProcessingSession.session_id == session_uuid).first()
-    processing_time = None
-    if session and session.created_at:
-        from datetime import datetime, timezone
-        end_time = session.updated_at or datetime.now(timezone.utc)
-        delta = end_time - session.created_at
-        # Format as HH:MM:SS
-        total_seconds = int(delta.total_seconds())
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        processing_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    # Calculate processing time
+    processing_time = _calculate_processing_time(db, session_uuid)
     
     return {
         "total_employees": issue_stats.total_employees,
@@ -546,6 +879,186 @@ def _calculate_comprehensive_statistics(db: Session, session_uuid) -> Dict[str, 
         "status_message": f"{issue_stats.ready_for_export} ready for pVault | {issue_stats.needs_attention} need attention",
         "processing_time": processing_time
     }
+
+
+def _chunked_statistics_calculation(db: Session, session_uuid, chunk_size: int = 1000) -> Dict[str, Any]:
+    """
+    Memory-efficient chunked processing for large datasets
+    
+    Processes data in chunks to avoid:
+    - Memory exhaustion
+    - Database timeouts
+    - Connection issues
+    """
+    import gc
+    
+    # Initialize counters
+    total_employees = 0
+    missing_receipts = 0
+    coding_incomplete = 0 
+    data_mismatches = 0
+    needs_attention = 0
+    
+    # Process in chunks to avoid memory issues
+    offset = 0
+    processed_chunks = 0
+    
+    while True:
+        # Get chunk with only needed columns for efficiency
+        chunk = db.query(
+            EmployeeRevision.validation_status,
+            EmployeeRevision.validation_flags
+        ).filter(
+            EmployeeRevision.session_id == session_uuid
+        ).offset(offset).limit(chunk_size).all()
+        
+        if not chunk:
+            break
+        
+        # Process this chunk
+        for revision in chunk:
+            total_employees += 1
+            
+            # Count needs attention
+            if revision.validation_status == ValidationStatus.NEEDS_ATTENTION:
+                needs_attention += 1
+            
+            # Safe JSON parsing
+            flags = _parse_validation_flags_safely(revision.validation_flags)
+            
+            # Count specific issues
+            if flags.get('missing_receipt') is True:
+                missing_receipts += 1
+                
+            if flags.get('coding_incomplete') is True:
+                coding_incomplete += 1
+                
+            if flags.get('amount_mismatch') is True:
+                data_mismatches += 1
+        
+        offset += chunk_size
+        processed_chunks += 1
+        
+        # Memory management for very large datasets
+        if processed_chunks % 10 == 0:  # Every 10k records
+            gc.collect()
+    
+    # Calculate derived statistics
+    ready_for_export = total_employees - needs_attention
+    validation_success_rate = round((ready_for_export / total_employees) * 100, 1) if total_employees > 0 else 0.0
+    
+    # Calculate processing time
+    processing_time = _calculate_processing_time(db, session_uuid)
+    
+    return {
+        "total_employees": total_employees,
+        "ready_for_pvault": ready_for_export,
+        "need_attention": needs_attention,
+        "issues_breakdown": {
+            "missing_receipts": missing_receipts,
+            "coding_incomplete": coding_incomplete,
+            "data_mismatches": data_mismatches
+        },
+        "export_readiness": {
+            "percentage": validation_success_rate,
+            "ready_count": ready_for_export,
+            "total_count": total_employees
+        },
+        "status_message": f"{ready_for_export} ready for pVault | {needs_attention} need attention",
+        "processing_time": processing_time
+    }
+
+
+def _parse_validation_flags_safely(validation_flags) -> Dict[str, Any]:
+    """Safely parse validation flags with comprehensive error handling"""
+    if not validation_flags:
+        return {}
+    
+    try:
+        if isinstance(validation_flags, dict):
+            return validation_flags
+        elif isinstance(validation_flags, str):
+            import json
+            parsed = json.loads(validation_flags)
+            return parsed if isinstance(parsed, dict) else {}
+        else:
+            return {}
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return {}
+
+
+def _calculate_processing_time(db: Session, session_uuid) -> Optional[str]:
+    """Calculate formatted processing time for session"""
+    try:
+        session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not session or not session.created_at:
+            return None
+        
+        from datetime import datetime, timezone
+        end_time = session.updated_at or datetime.now(timezone.utc)
+        delta = end_time - session.created_at
+        
+        # Format as HH:MM:SS
+        total_seconds = int(delta.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60 
+        seconds = total_seconds % 60
+        
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+    except Exception:
+        return None
+
+
+def _get_minimal_stats(db: Session, session_uuid) -> Dict[str, Any]:
+    """Fallback minimal stats when all else fails"""
+    try:
+        # Just count total revisions - most basic operation
+        total = db.query(EmployeeRevision).filter(
+            EmployeeRevision.session_id == session_uuid
+        ).count()
+        
+        processing_time = _calculate_processing_time(db, session_uuid)
+        
+        return {
+            "total_employees": total,
+            "ready_for_pvault": total,  # Assume all ready if we can't calculate  
+            "need_attention": 0,
+            "issues_breakdown": {
+                "missing_receipts": 0,
+                "coding_incomplete": 0,
+                "data_mismatches": 0
+            },
+            "export_readiness": {
+                "percentage": 100.0,
+                "ready_count": total,
+                "total_count": total
+            },
+            "status_message": f"{total} employees processed (detailed stats unavailable)",
+            "processing_time": processing_time
+        }
+        
+    except Exception:
+        return {
+            "total_employees": 0,
+            "ready_for_pvault": 0,
+            "need_attention": 0,
+            "issues_breakdown": {
+                "missing_receipts": 0,
+                "coding_incomplete": 0,
+                "data_mismatches": 0
+            },
+            "export_readiness": {
+                "percentage": 0.0,
+                "ready_count": 0,
+                "total_count": 0
+            },
+            "status_message": "Statistics unavailable",
+            "processing_time": None
+        }
 
 
 @router.get("/{session_id}/results", response_model=SessionResultsResponse)

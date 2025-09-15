@@ -238,7 +238,7 @@ def get_development_user(request: Request) -> Optional[str]:
     if dev_user:
         sanitized_user = sanitize_username(dev_user)
         if sanitized_user:
-            auth_logger.info(f"Development authentication - User: {sanitized_user}")
+            # Reduced logging for development authentication
             return sanitized_user
     
     # No development authentication provided - require explicit headers
@@ -289,7 +289,11 @@ async def get_current_user(request: Request) -> UserInfo:
                 )
         
         # Check if user is admin using secure method (case-insensitive for better security)
-        is_admin = settings.is_admin_user(username)
+        # In development mode, make dev users admin by default
+        if settings.debug and auth_method == 'development':
+            is_admin = True
+        else:
+            is_admin = settings.is_admin_user(username)
         
         user_info = UserInfo(
             username=username,
@@ -299,11 +303,8 @@ async def get_current_user(request: Request) -> UserInfo:
             timestamp=datetime.now(timezone.utc)
         )
         
-        # Log successful authentication
-        auth_logger.info(
-            f"User authenticated - Username: {username}, "
-            f"Admin: {is_admin}, Method: {auth_method}"
-        )
+        # Reduced logging for successful authentication (only log failures)
+        # auth_logger.info(f"User authenticated - Username: {username}, Admin: {is_admin}, Method: {auth_method}")
         
         return user_info
         

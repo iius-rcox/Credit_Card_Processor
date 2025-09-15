@@ -195,13 +195,19 @@ class AutoExportService:
         # Generate CSV content
         csv_content = self._create_pvault_csv_content(ready_employees)
         
-        # Create filename
+        # Create filename with proper sanitization
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        session_name = db_session.session_name.replace(" ", "_") if db_session.session_name else "Session"
+        session_name = db_session.session_name if db_session.session_name else "Session"
+        # Sanitize session name for filename - replace invalid characters
+        import re
+        session_name = re.sub(r'[<>:"/\\|?*]', '_', session_name).replace(' ', '_')
         filename = f"pVault_{session_name}_{session_id[:8]}_{timestamp}.csv"
         
-        # Save file (in production, this would save to proper storage)
-        file_path = Path(f"/tmp/{filename}")  # This should be configurable
+        # Save file to proper export directory
+        from ..config import settings
+        export_dir = Path(settings.export_path)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        file_path = export_dir / filename
         with open(file_path, 'w', newline='', encoding='utf-8') as f:
             f.write(csv_content)
         
@@ -276,8 +282,11 @@ class AutoExportService:
         session_name = re.sub(r'[<>:"/\\|?*]', '_', session_name).replace(' ', '_')
         filename = f"Exceptions_{session_name}_{session_id[:8]}_{timestamp}.csv"
         
-        # Save file
-        file_path = Path(f"/tmp/{filename}")
+        # Save file to proper export directory
+        from ..config import settings
+        export_dir = Path(settings.export_path)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        file_path = export_dir / filename
         with open(file_path, 'w', newline='', encoding='utf-8') as f:
             f.write(csv_content)
         

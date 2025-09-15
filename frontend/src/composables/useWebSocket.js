@@ -283,7 +283,7 @@ export function useWebSocket() {
         break
 
       case 'processing_completed':
-        sessionStore.setProcessingStatus('completed')
+        sessionStore.setSessionStatus('completed')
         sessionStore.updateSession(message.session_id, message.summary)
         notificationStore.addSuccess('Document processing completed successfully!')
         
@@ -292,7 +292,7 @@ export function useWebSocket() {
         break
 
       case 'processing_failed':
-        sessionStore.setProcessingStatus('failed')
+        sessionStore.setSessionStatus('error')
         sessionStore.setSessionError(message.error)
         notificationStore.addError(`Processing failed: ${message.message}`)
         break
@@ -300,11 +300,12 @@ export function useWebSocket() {
       case 'export_ready':
         notificationStore.addSuccess(`${message.export_type} export ready for download: ${message.filename}`)
         
-        // Update store with available export
-        sessionStore.addAvailableExport({
+        // Add to export history so it shows in the UI
+        sessionStore.addExportToHistory({
           type: message.export_type,
           filename: message.filename,
-          url: message.download_url
+          url: message.download_url,
+          size: message.size || null
         })
         break
 

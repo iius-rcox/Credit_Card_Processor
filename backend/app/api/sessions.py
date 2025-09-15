@@ -7,9 +7,12 @@ import uuid
 import logging
 import os
 import zipfile
+import time
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
@@ -22,6 +25,7 @@ from ..auth import get_current_user, UserInfo
 from ..cache import cached, cache, invalidate_cache_pattern
 from ..models import ProcessingSession, EmployeeRevision, ProcessingActivity, FileUpload, ValidationStatus, ActivityType, FileType
 from ..models import SessionStatus as ModelSessionStatus
+# Import from schemas.py directly (not the schemas package)
 from ..schemas import (
     SessionCreateRequest,
     SessionUpdateRequest,
@@ -30,8 +34,20 @@ from ..schemas import (
     SessionStatusResponse,
     SessionStatus as SchemaSessionStatus,
     CurrentEmployee,
+    ProcessingControlResponse,
     RecentActivity,
-    ErrorResponse
+    ErrorResponse,
+    ExportTrackingRequest,
+    ExportDeltaResponse,
+    ExportHistoryResponse,
+    MarkExportedRequest
+)
+
+from ..utils.error_handlers import db_error_handler, db_transaction_handler, log_and_track_error
+from ..utils.performance_monitor import performance_monitor, export_metrics
+from ..exceptions.export_exceptions import (
+    ExportError, ExportGenerationError, ExportTrackingError, 
+    DuplicateExportError, ExportValidationError
 )
 
 # Configure logger
@@ -39,6 +55,66 @@ logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+
+def retry_db_operation(func, max_retries=3, delay=0.1, db_session=None):
+    """
+    Retry database operations that fail due to locking or session state issues
+    
+    Args:
+        func: Function to retry
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay between retries (seconds)
+        db_session: Optional SQLAlchemy session to reset on retry
+        
+    Returns:
+        Result of the function call
+        
+    Raises:
+        The last exception if all retries fail
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except (sqlite3.OperationalError, SQLAlchemyError) as e:
+            last_exception = e
+            error_msg = str(e).lower()
+            
+            # Retry for database lock errors, session rollback errors, or detached instance errors
+            should_retry = (
+                "database is locked" in error_msg or 
+                "database locked" in error_msg or
+                "transaction has been rolled back" in error_msg or
+                "session's transaction has been rolled back" in error_msg or
+                "not persistent within this session" in error_msg
+            )
+            
+            if should_retry and attempt < max_retries:
+                wait_time = delay * (2 ** attempt)  # Exponential backoff
+                
+                if "rollback" in error_msg:
+                    logger.warning(f"Database session rolled back, resetting and retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_retries + 1})")
+                    # Reset the database session if provided
+                    if db_session:
+                        try:
+                            db_session.rollback()
+                            # Force session state reset
+                            db_session.expunge_all()
+                        except Exception as reset_error:
+                            logger.warning(f"Error resetting database session: {reset_error}")
+                else:
+                    logger.warning(f"Database locked, retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_retries + 1})")
+                
+                time.sleep(wait_time)
+                continue
+            
+            # Re-raise immediately for non-retryable errors
+            raise e
+    
+    # If we get here, all retries failed
+    raise last_exception
 
 
 def check_session_access(db_session: ProcessingSession, current_user: UserInfo) -> bool:
@@ -94,7 +170,15 @@ def convert_session_to_response(db_session: ProcessingSession) -> SessionRespons
         total_employees=db_session.total_employees,
         processed_employees=db_session.processed_employees,
         processing_options=db_session.processing_options or {},
-        delta_session_id=str(db_session.delta_session_id) if db_session.delta_session_id else None
+        delta_session_id=str(db_session.delta_session_id) if db_session.delta_session_id else None,
+        # Receipt processing tracking
+        last_receipt_upload=getattr(db_session, 'last_receipt_upload', None),
+        receipt_file_versions=getattr(db_session, 'receipt_file_versions', 1),
+        # Session closure tracking
+        is_closed=getattr(db_session, 'is_closed', False),
+        closure_reason=getattr(db_session, 'closure_reason', None),
+        closed_by=getattr(db_session, 'closed_by', None),
+        closed_at=getattr(db_session, 'closed_at', None)
     )
 
 
@@ -200,6 +284,106 @@ async def create_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create session due to internal error"
         )
+
+
+@router.get("/active", tags=["Sessions"], summary="Get all active sessions")
+async def get_active_sessions(
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Get all active sessions with detailed status information"""
+    try:
+        # Get all sessions with their current status
+        sessions = db.query(ProcessingSession).order_by(
+            ProcessingSession.updated_at.desc()
+        ).all()
+        
+        session_data = []
+        for session in sessions:
+            # Get progress information - temporarily disabled due to enum issue
+            # progress_stats = calculate_progress_statistics(session, db)
+            progress_stats = {'percent_complete': 0, 'completed_employees': 0}
+            
+            # Calculate duration
+            duration = None
+            if session.updated_at and session.created_at:
+                # Ensure both datetimes have timezone info for proper subtraction
+                updated_at = session.updated_at
+                created_at = session.created_at
+                
+                # Handle timezone-naive datetimes by assuming UTC
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                    
+                duration = (updated_at - created_at).total_seconds() * 1000
+            
+            # Get employee count
+            employee_count = db.query(EmployeeRevision).filter(
+                EmployeeRevision.session_id == session.session_id
+            ).count()
+            
+            session_data.append({
+                "session_id": str(session.session_id),
+                "session_name": session.session_name,
+                "status": session.status.value,
+                "created_at": session.created_at.isoformat(),
+                "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+                "created_by": session.created_by,
+                "progress": {
+                    "percentage": progress_stats.get('percent_complete', 0),
+                    "processed_count": progress_stats.get('completed_employees', 0)
+                },
+                "duration": duration,
+                "employee_count": {
+                    "total": employee_count,
+                    "processed": progress_stats.get('completed_employees', 0)
+                }
+            })
+        
+        return session_data
+        
+    except Exception as e:
+        logger.error(f"Failed to get active sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve sessions")
+
+
+@router.get("/dashboard/stats", tags=["Dashboard"], summary="Get dashboard statistics")
+async def get_dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Get statistics for the dashboard"""
+    try:
+        # Count active sessions
+        active_sessions = db.query(ProcessingSession).filter(
+            ProcessingSession.status == ModelSessionStatus.PROCESSING
+        ).count()
+        
+        # Count completed today
+        today = datetime.now(timezone.utc).date()
+        completed_today = db.query(ProcessingSession).filter(
+            ProcessingSession.status == ModelSessionStatus.COMPLETED,
+            func.date(ProcessingSession.updated_at) == today
+        ).count()
+        
+        # Get system health
+        system_health = "Healthy"
+        if active_sessions > 10:
+            system_health = "High Load"
+        elif active_sessions > 5:
+            system_health = "Moderate Load"
+        
+        return {
+            "active_sessions": active_sessions,
+            "completed_today": completed_today,
+            "system_health": system_health
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get dashboard stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dashboard statistics")
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
@@ -353,13 +537,17 @@ async def update_session(
             # Convert schema enum to model enum
             model_status = ModelSessionStatus(request.status.value)
             
-            # Validate status transition (basic validation - can be enhanced based on business rules)
-            if db_session.status == ModelSessionStatus.COMPLETED and model_status != ModelSessionStatus.COMPLETED:
+            # Validate status transition (allow restarting from COMPLETED to PROCESSING)
+            if db_session.status == ModelSessionStatus.COMPLETED and model_status not in [ModelSessionStatus.COMPLETED, ModelSessionStatus.PROCESSING]:
                 logger.warning(f"Invalid status transition from {db_session.status} to {model_status}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot change status of completed session"
+                    detail="Cannot change status of completed session to anything other than PROCESSING"
                 )
+            
+            # Log status transitions for debugging
+            if db_session.status != model_status:
+                logger.info(f"Status transition: {db_session.status} -> {model_status} for session {session_id}")
             
             db_session.status = model_status
             updated_fields.append("status")
@@ -371,9 +559,38 @@ async def update_session(
         # Update timestamp
         db_session.updated_at = datetime.now(timezone.utc)
         
-        # Commit changes
-        db.commit()
-        db.refresh(db_session)
+        # Commit changes with retry logic for database locking
+        def commit_changes():
+            # Re-query the session to ensure it's attached after any rollback
+            current_session = db.query(ProcessingSession).filter(
+                ProcessingSession.session_id == session_uuid
+            ).first()
+            
+            if not current_session:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Session not found during update"
+                )
+            
+            # Reapply the changes to the fresh session object
+            if request.session_name is not None:
+                current_session.session_name = request.session_name
+                
+            if request.status is not None:
+                model_status = ModelSessionStatus(request.status.value)
+                current_session.status = model_status
+                
+            if request.processing_options is not None:
+                current_session.processing_options = request.processing_options.model_dump()
+            
+            # Update timestamp on the fresh object
+            current_session.updated_at = datetime.now(timezone.utc)
+            
+            db.commit()
+            db.refresh(current_session)
+            return current_session
+        
+        db_session = retry_db_operation(commit_changes, max_retries=3, delay=0.2, db_session=db)
         
         logger.info(
             f"Session updated successfully - ID: {session_id}, "
@@ -531,7 +748,7 @@ def calculate_progress_statistics(session: ProcessingSession, db: Session = None
     total_employees = session.total_employees or 0
     
     # During active processing, use the session's processed counter
-    if session.status.value in ['processing', 'extracting', 'analyzing', 'uploading']:
+    if session.status.value in ['PROCESSING', 'EXTRACTING', 'ANALYZING', 'UPLOADING']:
         # Use the real-time processed counter from session
         completed_employees = session.processed_employees or 0
         # Calculate actual progress based on processing, not validation
@@ -577,7 +794,7 @@ def get_current_employee(session: ProcessingSession, db: Session = None) -> Opti
     Returns:
         CurrentEmployee object if processing, None otherwise
     """
-    if session.status.value not in ['processing', 'extracting', 'analyzing']:
+    if session.status.value not in ['PROCESSING', 'EXTRACTING', 'ANALYZING']:
         return None
     
     # Use preloaded processing_activities to avoid additional queries
@@ -631,7 +848,7 @@ def estimate_remaining_time(session: ProcessingSession, progress_stats: dict, db
     Returns:
         Formatted time string (HH:MM:SS) or None
     """
-    if session.status.value not in ['processing', 'extracting', 'analyzing'] or progress_stats['total_employees'] == 0:
+    if session.status.value not in ['PROCESSING', 'EXTRACTING', 'ANALYZING'] or progress_stats['total_employees'] == 0:
         return None
     
     # Get processing start time from first processing activity
@@ -1637,7 +1854,10 @@ async def download_all_split_files(
         
         # Generate ZIP filename with session info
         session_name = db_session.name or f"session_{session_id[:8]}"
-        zip_filename = f"{session_name}_split_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        # Sanitize session name for filename
+        import re
+        safe_session_name = re.sub(r'[<>:"/\\|?*]', '_', session_name).replace(' ', '_')
+        zip_filename = f"{safe_session_name}_split_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         
         def generate_zip():
             """Generator function to create ZIP file on-the-fly"""
@@ -1867,3 +2087,396 @@ async def cleanup_expired_files(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Expired file cleanup failed: {str(e)}"
         )
+
+
+@router.post("/{session_id}/reset", response_model=ProcessingControlResponse)
+async def reset_stuck_session(
+    session_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Reset a stuck processing session back to READY status
+    
+    This endpoint forcefully resets a session that may be stuck in processing,
+    clearing all processing state and allowing it to be restarted.
+    
+    Args:
+        session_id: UUID of the session to reset
+        current_user: Current authenticated user
+        db: Database session
+        
+    Returns:
+        ProcessingControlResponse: Reset operation result
+        
+    Raises:
+        HTTPException: 400 for invalid session, 403 for access denied, 
+                      404 for not found, 409 for invalid state
+    """
+    try:
+        # Validate UUID format
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError:
+            logger.warning(f"Invalid session UUID format for reset: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID format"
+            )
+        
+        # Query session from database
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            logger.warning(f"Session not found for reset: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            logger.warning(
+                f"User {current_user.username} attempted to reset session {session_id} without permission"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this session"
+            )
+        
+        # Reset session status
+        original_status = db_session.status
+        db_session.status = ModelSessionStatus.READY
+        db_session.processed_employees = 0
+        db_session.total_employees = 0
+        db.commit()
+        
+        # Clear processing state
+        from ..api.processing import clear_processing_state
+        clear_processing_state(session_id)
+        
+        logger.info(
+            f"Session {session_id} reset from {original_status.value} to READY - "
+            f"User: {current_user.username}"
+        )
+        
+        return ProcessingControlResponse(
+            session_id=session_id,
+            action="reset",
+            status=ModelSessionStatus.READY,
+            message=f"Session reset from {original_status.value} to READY",
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error resetting session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reset session due to internal error"
+        )
+
+
+@router.get("/active", tags=["Sessions"], summary="Get all active sessions")
+async def get_active_sessions():
+    """Get all active sessions with detailed status information"""
+    try:
+        # Test with minimal dependencies to isolate the issue
+        return {"message": "API endpoint is working", "status": "success"}
+        
+    except Exception as e:
+        logger.error(f"Failed to get active sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve sessions")
+
+
+@router.post("/{session_id}/close", tags=["Sessions"], summary="Permanently close a session")
+async def close_session(
+    session_id: str,
+    closure_reason: str = None,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Permanently close a session - cannot be reopened"""
+    try:
+        session_uuid = UUID(session_id)
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check if session is already closed
+        if db_session.is_closed:
+            raise HTTPException(status_code=400, detail="Session is already permanently closed")
+        
+        # Check access permissions
+        if not check_session_access(db_session, current_user):
+            raise HTTPException(status_code=403, detail="Access denied to this session")
+        
+        # Update session to permanently closed
+        db_session.is_closed = True
+        db_session.status = ModelSessionStatus.CLOSED
+        db_session.closed_by = current_user.username
+        db_session.closed_at = datetime.now(timezone.utc)
+        if closure_reason:
+            db_session.closure_reason = closure_reason
+        db_session.updated_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        
+        # Cancel any running background tasks
+        # Note: This would need to be implemented based on your task management system
+        # cancel_session_processing(session_uuid)
+        
+        logger.info(f"Session {session_id} permanently closed by {current_user.username}")
+        
+        return {
+            "message": "Session permanently closed successfully", 
+            "status": "closed",
+            "closed_by": current_user.username,
+            "closed_at": db_session.closed_at.isoformat()
+        }
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+    except Exception as e:
+        logger.error(f"Failed to close session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to close session")
+
+
+@router.post("/{session_id}/resume", tags=["Sessions"], summary="Resume a paused session")
+async def resume_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Resume a paused or completed session (blocked if permanently closed)"""
+    try:
+        session_uuid = UUID(session_id)
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check if session is permanently closed
+        if db_session.is_closed:
+            raise HTTPException(status_code=400, detail="Cannot resume a permanently closed session")
+        
+        if db_session.status not in [ModelSessionStatus.PAUSED, ModelSessionStatus.COMPLETED, ModelSessionStatus.FAILED]:
+            raise HTTPException(status_code=400, detail="Session cannot be resumed")
+        
+        # Update session status
+        db_session.status = ModelSessionStatus.PROCESSING
+        db_session.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        
+        # Restart processing
+        # Note: This would need to be implemented based on your task management system
+        # await start_session_processing(session_uuid)
+        
+        return {"message": "Session resumed successfully", "status": "processing"}
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+    except Exception as e:
+        logger.error(f"Failed to resume session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to resume session")
+
+
+@router.delete("/{session_id}", tags=["Sessions"], summary="Delete a session")
+async def delete_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Delete a session and all its data"""
+    try:
+        session_uuid = UUID(session_id)
+        db_session = db.query(ProcessingSession).filter(
+            ProcessingSession.session_id == session_uuid
+        ).first()
+        
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check permissions using existing helper function
+        if not check_session_access(db_session, current_user):
+            logger.warning(
+                f"User {current_user.username} denied access to delete session {session_id}"
+            )
+            raise HTTPException(status_code=403, detail="Access denied to this session")
+        
+        # Prevent deletion of active processing sessions
+        if db_session.status in [ModelSessionStatus.PROCESSING, ModelSessionStatus.EXTRACTING, 
+                                ModelSessionStatus.ANALYZING, ModelSessionStatus.UPLOADING]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot delete session with status '{db_session.status}'. Please stop or close the session first."
+            )
+        
+        # Use database transaction handler for safe deletion
+        with db_transaction_handler(db, "delete session"):
+            # Count related records for audit logging
+            employee_count = db.query(EmployeeRevision).filter(
+                EmployeeRevision.session_id == session_uuid
+            ).count()
+            
+            activity_count = db.query(ProcessingActivity).filter(
+                ProcessingActivity.session_id == session_uuid
+            ).count()
+            
+            # Delete related data in proper order (foreign keys)
+            db.query(EmployeeRevision).filter(
+                EmployeeRevision.session_id == session_uuid
+            ).delete()
+            
+            db.query(ProcessingActivity).filter(
+                ProcessingActivity.session_id == session_uuid
+            ).delete()
+            
+            # Check for Phase 4 models if they exist
+            try:
+                from ..models import ReceiptVersion, EmployeeChangeLog, ExportHistory
+                
+                # Delete from Phase 4 tables if they exist
+                db.query(ReceiptVersion).filter(
+                    ReceiptVersion.session_id == session_uuid
+                ).delete()
+                
+                db.query(EmployeeChangeLog).filter(
+                    EmployeeChangeLog.session_id == session_uuid
+                ).delete()
+                
+                db.query(ExportHistory).filter(
+                    ExportHistory.session_id == session_uuid
+                ).delete()
+                
+            except ImportError:
+                # Phase 4 models not available
+                logger.debug("Phase 4 models not available for cleanup")
+            except Exception as cleanup_error:
+                logger.warning(f"Phase 4 table cleanup warning: {cleanup_error}")
+            
+            # Delete the session
+            session_name = db_session.session_name or "Unnamed Session"
+            db.delete(db_session)
+            
+            logger.info(
+                f"Session {session_id} ('{session_name}') deleted by {current_user.username}. "
+                f"Removed {employee_count} employees, {activity_count} activities."
+            )
+            
+            return {
+                "message": "Session deleted successfully",
+                "session_id": session_id,
+                "session_name": session_name,
+                "deleted_employees": employee_count,
+                "deleted_activities": activity_count,
+                "deleted_by": current_user.username
+            }
+        
+    except ValueError:
+        logger.warning(f"Invalid session UUID format for deletion: {session_id}")
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete session {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete session")
+
+
+@router.post("/close-all", tags=["Sessions"], summary="Permanently close all active sessions")
+async def close_all_sessions(
+    closure_reason: str = None,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Permanently close all active sessions (processing, extracting, analyzing, uploading, paused) (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Get all active sessions that can be closed (not already closed)
+        active_sessions = db.query(ProcessingSession).filter(
+            ProcessingSession.is_closed == False,
+            ProcessingSession.status.in_([
+                ModelSessionStatus.PROCESSING,
+                ModelSessionStatus.EXTRACTING, 
+                ModelSessionStatus.ANALYZING,
+                ModelSessionStatus.UPLOADING,
+                ModelSessionStatus.PAUSED,
+                ModelSessionStatus.COMPLETED
+            ])
+        ).all()
+        
+        closed_count = 0
+        for session in active_sessions:
+            # Cancel processing
+            # Note: This would need to be implemented based on your task management system
+            # cancel_session_processing(session.session_id)
+            
+            # Permanently close session
+            session.is_closed = True
+            session.status = ModelSessionStatus.CLOSED
+            session.closed_by = current_user.username
+            session.closed_at = datetime.now(timezone.utc)
+            session.closure_reason = closure_reason or "Bulk closure by admin"
+            session.updated_at = datetime.now(timezone.utc)
+            closed_count += 1
+        
+        db.commit()
+        
+        logger.info(f"Admin {current_user.username} permanently closed {closed_count} sessions")
+        
+        return {
+            "message": f"Permanently closed {closed_count} sessions successfully",
+            "closed_count": closed_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to close all sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to close all sessions")
+
+
+@router.get("/dashboard/stats", tags=["Dashboard"], summary="Get dashboard statistics")
+async def get_dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Get statistics for the dashboard"""
+    try:
+        # Count active sessions
+        active_sessions = db.query(ProcessingSession).filter(
+            ProcessingSession.status == ModelSessionStatus.PROCESSING
+        ).count()
+        
+        # Count completed today
+        today = datetime.now(timezone.utc).date()
+        completed_today = db.query(ProcessingSession).filter(
+            ProcessingSession.status == ModelSessionStatus.COMPLETED,
+            func.date(ProcessingSession.updated_at) == today
+        ).count()
+        
+        # Get system health
+        system_health = "Healthy"
+        if active_sessions > 10:
+            system_health = "High Load"
+        elif active_sessions > 5:
+            system_health = "Moderate Load"
+        
+        return {
+            "active_sessions": active_sessions,
+            "completed_today": completed_today,
+            "system_health": system_health
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get dashboard stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dashboard statistics")
