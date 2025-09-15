@@ -1,34 +1,69 @@
 {
-  "name": "credit_card_processor",
+  "name": "credit-card-processor-tests",
   "version": "1.0.0",
-  "description": "A secure, enterprise-grade web application for processing and analyzing PDF credit card statements with intelligent data extraction and comprehensive reporting.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "tests"
-  },
+  "description": "Comprehensive Playwright tests for Credit Card Processor application",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "test:e2e": "playwright test --config=config/playwright/playwright.config.js",
-    "test:e2e:ui": "playwright test --config=config/playwright/playwright.config.js --ui",
-    "test:e2e:debug": "playwright test --config=config/playwright/playwright.config.js --debug"
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report",
+    "test:install": "playwright install",
+    "test:install-deps": "playwright install-deps",
+    "test:complete": "playwright test complete-functionality.spec.js",
+    "test:session-management": "playwright test session-management.spec.js",
+    "test:modals": "playwright test modal-functionality.spec.js",
+    "test:api": "playwright test api-integration.spec.js",
+    "test:phase4": "playwright test phase4-functionality.spec.js",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "test:critical": "playwright test --grep @critical",
+    "test:all-browsers": "playwright test --project=chromium --project=firefox --project=webkit",
+    "test:mobile": "playwright test --project=Mobile\\ Chrome --project=Mobile\\ Safari",
+    "test:ci": "playwright test --reporter=html --reporter=json",
+    "test:watch": "playwright test --watch",
+    "test:parallel": "playwright test --workers=4",
+    "test:retry": "playwright test --retries=3",
+    "test:timeout": "playwright test --timeout=60000",
+    "test:grep": "playwright test --grep",
+    "test:list": "playwright test --list",
+    "test:trace": "playwright test --trace=on",
+    "test:video": "playwright test --video=on",
+    "test:screenshot": "playwright test --screenshot=only-on-failure",
+    "test:full": "npm run test:install && npm run test:all-browsers && npm run test:mobile",
+    "test:quick": "playwright test --workers=1 --timeout=30000",
+    "test:slow": "playwright test --timeout=120000",
+    "test:verbose": "playwright test --reporter=list",
+    "test:json": "playwright test --reporter=json",
+    "test:junit": "playwright test --reporter=junit",
+    "test:line": "playwright test --reporter=line",
+    "test:dot": "playwright test --reporter=dot",
+    "test:github": "playwright test --reporter=github",
+    "test:blob": "playwright test --reporter=blob",
+    "test:html": "playwright test --reporter=html",
+    "test:allure": "playwright test --reporter=allure-playwright",
+    "test:report:open": "playwright show-report",
+    "test:report:serve": "playwright show-report --host=0.0.0.0 --port=9323",
+    "test:clean": "rm -rf test-results/ playwright-report/",
+    "test:setup": "npm run test:install && npm run test:install-deps",
+    "test:validate": "playwright test --dry-run",
+    "test:help": "playwright test --help"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/iius-rcox/Credit_Card_Processor.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/iius-rcox/Credit_Card_Processor/issues"
-  },
-  "homepage": "https://github.com/iius-rcox/Credit_Card_Processor#readme",
   "devDependencies": {
-    "@playwright/test": "^1.55.0",
-    "playwright": "^1.55.0"
+    "@playwright/test": "^1.40.0",
+    "allure-playwright": "^2.10.0"
   },
-  "dependencies": {
-    "playwright-core": "^1.55.0"
-  }
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "playwright",
+    "testing",
+    "e2e",
+    "credit-card-processor",
+    "automation",
+    "quality-assurance"
+  ],
+  "author": "Credit Card Processor Team",
+  "license": "MIT"
 }
