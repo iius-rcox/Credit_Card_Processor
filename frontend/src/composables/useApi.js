@@ -62,12 +62,14 @@ export function useApi() {
     }
     
     // In development mode, always add dev user header
-    // Check if we're in development environment
-    const isDevelopment = import.meta.env.NODE_ENV === 'development' || 
+    // Check if we're in development environment or have dev mode enabled
+    const isDevelopment = import.meta.env.NODE_ENV === 'development' ||
                          import.meta.env.MODE === 'development' ||
-                         import.meta.env.DEV === true
-    
-    if (isDevelopment) {
+                         import.meta.env.DEV === true ||
+                         import.meta.env.VITE_DEV_MODE === 'true' ||
+                         import.meta.env.VITE_DEV_MODE === true
+
+    if (isDevelopment || import.meta.env.VITE_DEV_USER) {
       // Use environment variable or fallback to default test user
       const devUser = import.meta.env.VITE_DEV_USER || 'rcox'
       headers['x-dev-user'] = devUser
