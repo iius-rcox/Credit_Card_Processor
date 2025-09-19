@@ -48,12 +48,12 @@ fi
 
 # Stop existing containers
 echo "2. Stopping existing containers..."
-docker-compose -f docker-compose.production.yml down 2>/dev/null || true
+docker-compose -f config/docker/docker-compose.production.yml down 2>/dev/null || true
 echo -e "${GREEN}✅ Existing containers stopped${NC}"
 
 # Pull latest images and build
 echo "3. Building production images..."
-docker-compose -f docker-compose.production.yml build --no-cache
+docker-compose -f config/docker/docker-compose.production.yml build --no-cache
 echo -e "${GREEN}✅ Production images built${NC}"
 
 # Create necessary directories
@@ -72,13 +72,13 @@ echo -e "${YELLOW}🚀 Starting Production Services${NC}"
 echo "=================================="
 
 echo "Starting database..."
-docker-compose -f docker-compose.production.yml up -d db
+docker-compose -f config/docker/docker-compose.production.yml up -d db
 echo -e "${GREEN}✅ Database started${NC}"
 
 # Wait for database to be ready
 echo "Waiting for database to be ready..."
 for i in {1..30}; do
-    if docker-compose -f docker-compose.production.yml exec -T db pg_isready -U creditcard_user -d creditcard >/dev/null 2>&1; then
+    if docker-compose -f config/docker/docker-compose.production.yml exec -T db pg_isready -U creditcard_user -d creditcard >/dev/null 2>&1; then
         break
     fi
     echo -n "."
@@ -87,7 +87,7 @@ done
 echo -e "${GREEN}✅ Database is ready${NC}"
 
 echo "Starting backend..."
-docker-compose -f docker-compose.production.yml up -d backend
+docker-compose -f config/docker/docker-compose.production.yml up -d backend
 echo -e "${GREEN}✅ Backend started${NC}"
 
 # Wait for backend to be ready
@@ -102,7 +102,7 @@ done
 echo -e "${GREEN}✅ Backend is ready${NC}"
 
 echo "Starting frontend..."
-docker-compose -f docker-compose.production.yml up -d frontend
+docker-compose -f config/docker/docker-compose.production.yml up -d frontend
 echo -e "${GREEN}✅ Frontend started${NC}"
 
 # Final health check
@@ -128,7 +128,7 @@ fi
 # Show logs
 echo -e "${YELLOW}📋 Service Status${NC}"
 echo "=================="
-docker-compose -f docker-compose.production.yml ps
+docker-compose -f config/docker/docker-compose.production.yml ps
 
 echo ""
 echo -e "${GREEN}🎉 Production Deployment Complete!${NC}"
@@ -145,9 +145,9 @@ echo "   Logs: ./logs/"
 echo "   Backups: ./backups/"
 echo ""
 echo "🛠️  Useful commands:"
-echo "   View logs: docker-compose -f docker-compose.production.yml logs"
-echo "   Stop services: docker-compose -f docker-compose.production.yml down"
-echo "   Restart: docker-compose -f docker-compose.production.yml restart"
+echo "   View logs: docker-compose -f config/docker/docker-compose.production.yml logs"
+echo "   Stop services: docker-compose -f config/docker/docker-compose.production.yml down"
+echo "   Restart: docker-compose -f config/docker/docker-compose.production.yml restart"
 echo ""
 
 # Check if Azure is configured
