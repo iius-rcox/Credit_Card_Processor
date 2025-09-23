@@ -33,33 +33,90 @@ az ad app update --id $APP_ID --web-redirect-uris \
   "http://localhost:3000/auth/callback" \
   "https://creditcard.yourdomain.com/auth/callback"
 ```
+Automation helper scripts are provided to rerun these steps safely:
+- Bash / WSL: `./scripts/setup-azure-ad-app.sh --redirect-uri https://creditcard.yourdomain.com/auth/callback`
+- Windows PowerShell: `pwsh -File scripts/setup-azure-ad-app.ps1 -RedirectUri https://creditcard.yourdomain.com/auth/callback`
 
-### 1.2 Azure Key Vault Setup
+### 1.2 Managed Identity & Key Vault Setup
+
+The `iius-akv` vault now holds secrets `azure-client-id`, `azure-client-secret`, `azure-tenant-id`, `session-secret-key`, `db-password`, `database-connection-string`, `doc-intelligence-api-key`, and `storage-account-key`, all aligned with the CSI driver configuration.
 
 ```bash
-# Create Key Vault
-az keyvault create --name ccprocessor-kv \
-  --resource-group your-rg \
-  --location eastus
-
+# Create User-Assigned Managed Identity (skip if already provisioned)
+IDENTITY_NAME="azurekeyvaultsecretsprovider-dev-aks"
+RESOURCE_GROUP="rg_prod"
+AKS_NAME="dev-aks"
+KEYVAULT_NAME="iius-akv"
+STORAGE_ACCOUNT_NAME="cssa915121f46f2ae0d374e7"
+DOC_INTELLIGENCE_ACCOUNT="iius-doc-intelligence"
+DATABASE_HOST="INSCOLVSQL"
+DATABASE_NAME="creditcard"
+DATABASE_USER="ccuser"
+az identity create --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP
+# Get identity details
+IDENTITY_CLIENT_ID=$(az identity show --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query clientId -o tsv)
+IDENTITY_RESOURCE_ID=$(az identity show --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id -o tsv)
+# Create Key Vault (skip if already provisioned)
+az keyvault create --name $KEYVAULT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location southcentralus
+# Grant managed identity access to Key Vault
+az keyvault set-policy --name $KEYVAULT_NAME \
+  --object-id $(az identity show --name $IDENTITY_NAME \
+    --resource-group $RESOURCE_GROUP \
+    --query principalId -o tsv) \
+  --secret-permissions get list
+# Retrieve existing service keys
+DOC_INTELLIGENCE_API_KEY=$(az cognitiveservices account keys list \
+  --name $DOC_INTELLIGENCE_ACCOUNT \
+  --resource-group $RESOURCE_GROUP \
+  --query key1 -o tsv)
+STORAGE_ACCOUNT_KEY=$(az storage account keys list \
+  --account-name $STORAGE_ACCOUNT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query [0].value -o tsv)
 # Store secrets in Key Vault
-az keyvault secret set --vault-name ccprocessor-kv \
+az keyvault secret set --vault-name $KEYVAULT_NAME \
   --name azure-client-id --value $APP_ID
-
-az keyvault secret set --vault-name ccprocessor-kv \
+az keyvault secret set --vault-name $KEYVAULT_NAME \
   --name azure-client-secret --value $CLIENT_SECRET
-
-az keyvault secret set --vault-name ccprocessor-kv \
+az keyvault secret set --vault-name $KEYVAULT_NAME \
   --name azure-tenant-id --value $TENANT_ID
-
-az keyvault secret set --vault-name ccprocessor-kv \
+az keyvault secret set --vault-name $KEYVAULT_NAME \
   --name session-secret-key --value $(openssl rand -base64 32)
-
+DB_PASSWORD=$(openssl rand -base64 32)
+az keyvault secret set --vault-name $KEYVAULT_NAME \
+  --name db-password --value $DB_PASSWORD
+DATABASE_CONNECTION_STRING="postgresql://${DATABASE_USER}:${DB_PASSWORD}@${DATABASE_HOST}:5432/${DATABASE_NAME}"
+az keyvault secret set --vault-name $KEYVAULT_NAME \
+  --name database-connection-string --value "$DATABASE_CONNECTION_STRING"
+az keyvault secret set --vault-name $KEYVAULT_NAME \
+  --name doc-intelligence-api-key --value "$DOC_INTELLIGENCE_API_KEY"
+az keyvault secret set --vault-name $KEYVAULT_NAME \
+  --name storage-account-key --value "$STORAGE_ACCOUNT_KEY"
 # Enable Key Vault CSI driver in AKS
 az aks enable-addons --addons azure-keyvault-secrets-provider \
-  --name your-aks-cluster \
-  --resource-group your-rg
+  --name $AKS_NAME \
+  --resource-group $RESOURCE_GROUP
+# Assign managed identity to AKS VMSS
+AKS_NODE_RESOURCE_GROUP=$(az aks show --name $AKS_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query nodeResourceGroup -o tsv)
+VMSS_NAME=$(az vmss list --resource-group $AKS_NODE_RESOURCE_GROUP \
+  --query "[0].name" -o tsv)
+az vmss identity assign \
+  --resource-group $AKS_NODE_RESOURCE_GROUP \
+  --name $VMSS_NAME \
+  --identities $IDENTITY_RESOURCE_ID
 ```
+Automation helper scripts are provided to execute these steps consistently:
+- Bash / WSL: `./scripts/setup-managed-identity-keyvault.sh --resource-group rg_prod --aks-name dev-aks --keyvault-name iius-akv --client-id $APP_ID --client-secret $CLIENT_SECRET --tenant-id $TENANT_ID --storage-account-name cssa915121f46f2ae0d374e7 --doc-intelligence-account iius-doc-intelligence --database-host INSCOLVSQL --database-name creditcard --database-user ccuser`
+- Windows PowerShell: `pwsh -File scripts/setup-managed-identity-keyvault.ps1 -ResourceGroup rg_prod -AksName dev-aks -KeyVaultName iius-akv -ClientId $APP_ID -ClientSecret $CLIENT_SECRET -TenantId $TENANT_ID -StorageAccountName cssa915121f46f2ae0d374e7 -DocIntelligenceAccount iius-doc-intelligence -DatabaseHost INSCOLVSQL -DatabaseName creditcard -DatabaseUser ccuser`
 
 ### 1.3 Frontend Authentication (Vue.js)
 
@@ -197,14 +254,252 @@ export function useAuth() {
 }
 ```
 
-### 1.4 Backend Token Validation
+### 1.4 Backend Token Validation & PDF Security
 
 ```python
 # backend/requirements.txt additions
 PyJWT==2.8.0
 cryptography==41.0.7
 requests==2.31.0
+python-magic==0.4.27
+pypdf==3.17.4
+clamd==1.0.2  # ClamAV integration
 ```
+
+```python
+# backend/app/security/pdf_validator.py
+import os
+import magic
+import hashlib
+from pypdf import PdfReader
+from typing import BinaryIO, Dict, Any
+from fastapi import HTTPException, UploadFile
+import clamd
+import logging
+
+logger = logging.getLogger(__name__)
+
+class PDFValidator:
+    """Comprehensive PDF validation for security"""
+
+    def __init__(self):
+        self.max_file_size = 300 * 1024 * 1024  # 300MB
+        self.allowed_mime_types = ['application/pdf']
+        self.pdf_magic_numbers = [b'%PDF-1.', b'%PDF-2.']
+
+        # Initialize ClamAV connection (optional)
+        try:
+            self.clam = clamd.ClamdUnixSocket()
+            self.clam.ping()
+            self.antivirus_available = True
+            logger.info("ClamAV antivirus connected")
+        except:
+            self.antivirus_available = False
+            logger.warning("ClamAV not available - virus scanning disabled")
+
+    async def validate_pdf(self, file: UploadFile) -> Dict[str, Any]:
+        """
+        Comprehensive PDF validation
+        Returns validation results and metadata
+        """
+        results = {
+            'valid': False,
+            'errors': [],
+            'warnings': [],
+            'metadata': {}
+        }
+
+        # 1. Check file extension
+        if not file.filename.lower().endswith('.pdf'):
+            results['errors'].append("File must have .pdf extension")
+            raise HTTPException(status_code=400, detail="Invalid file type")
+
+        # 2. Check file size
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        if file_size > self.max_file_size:
+            results['errors'].append(f"File too large: {file_size} bytes (max: {self.max_file_size})")
+            raise HTTPException(status_code=413, detail="File too large")
+
+        if file_size == 0:
+            results['errors'].append("Empty file")
+            raise HTTPException(status_code=400, detail="Empty file")
+
+        results['metadata']['size'] = file_size
+
+        # 3. Check magic number (file signature)
+        if not any(file_content.startswith(magic) for magic in self.pdf_magic_numbers):
+            results['errors'].append("Invalid PDF magic number")
+            raise HTTPException(status_code=400, detail="Not a valid PDF file")
+
+        # 4. Check MIME type
+        mime_type = magic.from_buffer(file_content, mime=True)
+        if mime_type not in self.allowed_mime_types:
+            results['errors'].append(f"Invalid MIME type: {mime_type}")
+            raise HTTPException(status_code=400, detail="Invalid file type")
+
+        results['metadata']['mime_type'] = mime_type
+
+        # 5. Virus scan (if available)
+        if self.antivirus_available:
+            try:
+                scan_result = self.clam.instream(file_content)
+                if scan_result['stream'] != ('OK', None):
+                    results['errors'].append(f"Virus detected: {scan_result['stream'][1]}")
+                    raise HTTPException(status_code=400, detail="Malicious file detected")
+            except HTTPException:
+                raise
+            except Exception as e:
+                results['warnings'].append(f"Virus scan failed: {str(e)}")
+                logger.error(f"Virus scan failed: {e}")
+
+        # 6. Parse PDF and check structure
+        try:
+            import io
+            pdf_file = io.BytesIO(file_content)
+            reader = PdfReader(pdf_file)
+
+            # Check for JavaScript (potential security risk)
+            if reader.js:
+                results['warnings'].append("PDF contains JavaScript")
+                logger.warning(f"PDF contains JavaScript: {file.filename}")
+
+            # Check for embedded files
+            if reader.attachments:
+                results['warnings'].append("PDF contains embedded files")
+                logger.warning(f"PDF contains embedded files: {file.filename}")
+
+            # Get metadata
+            metadata = reader.metadata
+            if metadata:
+                results['metadata']['title'] = str(metadata.title) if metadata.title else None
+                results['metadata']['author'] = str(metadata.author) if metadata.author else None
+                results['metadata']['creator'] = str(metadata.creator) if metadata.creator else None
+                results['metadata']['producer'] = str(metadata.producer) if metadata.producer else None
+                results['metadata']['creation_date'] = str(metadata.creation_date) if metadata.creation_date else None
+
+            results['metadata']['pages'] = len(reader.pages)
+            results['metadata']['is_encrypted'] = reader.is_encrypted
+
+            # Check for forms (potential data collection)
+            if reader.get_fields():
+                results['warnings'].append("PDF contains form fields")
+
+            # Check for external links
+            for page in reader.pages:
+                if '/Annots' in page:
+                    annotations = page['/Annots']
+                    for annot_ref in annotations:
+                        annot = annot_ref.get_object()
+                        if annot.get('/A') and annot['/A'].get('/URI'):
+                            results['warnings'].append("PDF contains external links")
+                            break
+
+        except Exception as e:
+            results['errors'].append(f"PDF parsing failed: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid PDF structure")
+
+        # 7. Calculate file hash for tracking
+        file_hash = hashlib.sha256(file_content).hexdigest()
+        results['metadata']['sha256'] = file_hash
+
+        # Reset file pointer for further processing
+        await file.seek(0)
+
+        results['valid'] = len(results['errors']) == 0
+
+        return results
+
+# Usage in FastAPI endpoint
+from fastapi import FastAPI, UploadFile, File, Depends
+from app.security.pdf_validator import PDFValidator
+
+app = FastAPI()
+pdf_validator = PDFValidator()
+
+@app.post("/api/upload/receipt")
+async def upload_receipt(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user)
+):
+    """Upload and validate receipt PDF"""
+
+    # Validate PDF
+    validation_result = await pdf_validator.validate_pdf(file)
+
+    if not validation_result['valid']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid PDF: {', '.join(validation_result['errors'])}"
+        )
+
+    # Log any warnings
+    if validation_result['warnings']:
+        logger.warning(f"PDF warnings for {file.filename}: {validation_result['warnings']}")
+
+    # Process the validated PDF
+    # ... your processing logic here ...
+
+    return {
+        "message": "Receipt uploaded successfully",
+        "filename": file.filename,
+        "metadata": validation_result['metadata'],
+        "warnings": validation_result['warnings']
+    }
+```
+
+```yaml
+# k8s/clamav-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamav
+  namespace: credit-card-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clamav
+  template:
+    metadata:
+      labels:
+        app: clamav
+    spec:
+      containers:
+      - name: clamav
+        image: clamav/clamav:latest
+        ports:
+        - containerPort: 3310
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: clamav-data
+          mountPath: /var/lib/clamav
+      volumes:
+      - name: clamav-data
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamav
+  namespace: credit-card-processor
+spec:
+  selector:
+    app: clamav
+  ports:
+  - port: 3310
+    targetPort: 3310
+```
+
+### 1.5 Azure AD Token Validation
 
 ```python
 # backend/app/auth/azure_ad.py
@@ -318,7 +613,7 @@ async def get_me(user=Depends(get_current_user)):
     return user
 ```
 
-### 1.5 Kubernetes Deployment
+### 1.6 Kubernetes Deployment
 
 ```yaml
 # k8s/00-namespace.yaml
@@ -340,8 +635,8 @@ spec:
   parameters:
     usePodIdentity: "false"
     useVMManagedIdentity: "true"
-    userAssignedIdentityID: "<managed-identity-client-id>"
-    keyvaultName: "ccprocessor-kv"
+    userAssignedIdentityID: "${IDENTITY_CLIENT_ID}"  # Set from script above
+    keyvaultName: "iius-akv"
     cloudName: "AzurePublicCloud"
     objects: |
       array:
@@ -357,7 +652,19 @@ spec:
         - |
           objectName: session-secret-key
           objectType: secret
-    tenantId: "<your-tenant-id>"
+        - |
+          objectName: db-password
+          objectType: secret
+        - |
+          objectName: database-connection-string
+          objectType: secret
+        - |
+          objectName: doc-intelligence-api-key
+          objectType: secret
+        - |
+          objectName: storage-account-key
+          objectType: secret
+    tenantId: "${TENANT_ID}"  # Set from script above
   secretObjects:
   - secretName: app-secrets
     type: Opaque
@@ -370,6 +677,14 @@ spec:
       key: AZURE_TENANT_ID
     - objectName: session-secret-key
       key: SESSION_SECRET_KEY
+    - objectName: db-password
+      key: DB_PASSWORD
+    - objectName: database-connection-string
+      key: DATABASE_CONNECTION_STRING
+    - objectName: doc-intelligence-api-key
+      key: DOC_INTELLIGENCE_API_KEY
+    - objectName: storage-account-key
+      key: STORAGE_ACCOUNT_KEY
 ```
 
 ```yaml
@@ -466,14 +781,24 @@ spec:
     spec:
       containers:
       - name: backend
-        image: creditcardprocessor.azurecr.io/backend:latest
+        image: iiusacr.azurecr.io/backend:latest
         ports:
         - containerPort: 8001
         env:
         - name: ENVIRONMENT
           value: production
         - name: DATABASE_URL
-          value: postgresql://ccuser:$(DB_PASSWORD)@postgres:5432/creditcard
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DATABASE_CONNECTION_STRING
+        - name: DOC_INTELLIGENCE_ENDPOINT
+          value: https://iius-doc-intelligence.cognitiveservices.azure.com/
+        - name: DOC_INTELLIGENCE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DOC_INTELLIGENCE_API_KEY
         envFrom:
         - secretRef:
             name: app-secrets
@@ -572,7 +897,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: creditcardprocessor.azurecr.io/frontend:latest
+        image: iiusacr.azurecr.io/frontend:latest
         ports:
         - containerPort: 80
         env:
@@ -706,7 +1031,7 @@ spec:
       port: 5432
 ```
 
-### 1.6 Deployment Script
+### 1.7 Deployment Script
 
 ```bash
 #!/bin/bash
@@ -714,12 +1039,12 @@ spec:
 
 set -e
 
-echo "🚀 Deploying Credit Card Processor to AKS"
+echo "?? Deploying Credit Card Processor to AKS"
 
 # Variables
-RESOURCE_GROUP="your-rg"
-AKS_NAME="your-aks-cluster"
-ACR_NAME="creditcardprocessor"
+RESOURCE_GROUP="rg_prod"
+AKS_NAME="dev-aks"
+ACR_NAME="iiusacr"
 
 # Login to Azure
 az login
@@ -728,12 +1053,12 @@ az login
 az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_NAME
 
 # Build and push images
-echo "📦 Building and pushing Docker images..."
+echo "?? Building and pushing Docker images..."
 az acr build --registry $ACR_NAME --image backend:latest ./backend
 az acr build --registry $ACR_NAME --image frontend:latest ./frontend
 
 # Deploy to Kubernetes
-echo "☸️ Deploying to Kubernetes..."
+echo "?? Deploying to Kubernetes..."
 kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/01-keyvault-secrets.yaml
 
@@ -750,8 +1075,8 @@ kubectl apply -f k8s/04-frontend.yaml
 kubectl apply -f k8s/05-ingress.yaml
 kubectl apply -f k8s/06-network-policy.yaml
 
-echo "✅ Deployment complete!"
-echo "🌐 Application will be available at: https://creditcard.yourdomain.com"
+echo "? Deployment complete!"
+echo "?? Application will be available at: https://creditcard.yourdomain.com"
 ```
 
 ## Phase 2: Monitoring & Operations
@@ -761,8 +1086,8 @@ echo "🌐 Application will be available at: https://creditcard.yourdomain.com"
 ```bash
 # Enable Azure Monitor for AKS
 az aks enable-addons -a monitoring \
-  --name your-aks-cluster \
-  --resource-group your-rg
+  --name dev-aks \
+  --resource-group rg_prod
 ```
 
 ```yaml
@@ -787,6 +1112,63 @@ data:
 
 ### 2.2 Database Backup
 
+```dockerfile
+# backup/Dockerfile
+FROM mcr.microsoft.com/azure-cli:latest
+
+# Install PostgreSQL client for pg_dump (Debian/Ubuntu)
+RUN apt-get update && \
+    apt-get install -y postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create backup script
+COPY backup.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/backup.sh
+
+ENTRYPOINT ["/usr/local/bin/backup.sh"]
+```
+
+```bash
+# backup/backup.sh
+#!/bin/sh
+set -e
+
+# Variables from environment
+DB_HOST=${DB_HOST:-postgres}
+DB_USER=${DB_USER:-ccuser}
+DB_NAME=${DB_NAME:-creditcard}
+STORAGE_ACCOUNT=${STORAGE_ACCOUNT}
+CONTAINER_NAME=${CONTAINER_NAME:-backups}
+
+# Generate timestamp
+DATE=$(date +%Y%m%d-%H%M%S)
+BACKUP_FILE="backup-${DATE}.sql"
+
+echo "Starting backup at ${DATE}"
+
+# Perform database backup
+echo "Backing up database ${DB_NAME}..."
+pg_dump -h ${DB_HOST} -U ${DB_USER} ${DB_NAME} > /tmp/${BACKUP_FILE}
+
+# Login to Azure using managed identity
+echo "Authenticating with Azure..."
+az login --identity
+
+# Upload to Azure Storage
+echo "Uploading backup to Azure Storage..."
+az storage blob upload \
+  --account-name ${STORAGE_ACCOUNT} \
+  --container-name ${CONTAINER_NAME} \
+  --name ${BACKUP_FILE} \
+  --file /tmp/${BACKUP_FILE} \
+  --auth-mode login
+
+# Clean up
+rm /tmp/${BACKUP_FILE}
+
+echo "Backup completed successfully"
+```
+
 ```yaml
 # k8s/backup-cronjob.yaml
 apiVersion: batch/v1
@@ -799,28 +1181,80 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            azure.workload.identity/use: "true"
         spec:
+          serviceAccountName: backup-sa
           containers:
           - name: postgres-backup
-            image: postgres:15-alpine
+            image: iiusacr.azurecr.io/backup:latest
             env:
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: app-secrets
                   key: DB_PASSWORD
-            command:
-            - /bin/sh
-            - -c
-            - |
-              DATE=$(date +%Y%m%d-%H%M%S)
-              pg_dump -h postgres -U ccuser creditcard | \
-                az storage blob upload \
-                  --account-name yourbackupstorage \
-                  --container-name backups \
-                  --name backup-$DATE.sql \
-                  --auth-mode login
+            - name: DB_HOST
+              value: postgres
+            - name: DB_USER
+              value: ccuser
+            - name: DB_NAME
+              value: creditcard
+            - name: STORAGE_ACCOUNT
+              value: cssa915121f46f2ae0d374e7
+            - name: CONTAINER_NAME
+              value: backups
+            volumeMounts:
+            - name: secrets-store
+              mountPath: "/mnt/secrets"
+              readOnly: true
           restartPolicy: OnFailure
+          volumes:
+          - name: secrets-store
+            csi:
+              driver: secrets-store.csi.k8s.io
+              readOnly: true
+              volumeAttributes:
+                secretProviderClass: azure-keyvault
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-sa
+  namespace: credit-card-processor
+  annotations:
+    azure.workload.identity/client-id: "${IDENTITY_CLIENT_ID}"
+```
+
+```bash
+# Setup backup storage and permissions
+STORAGE_ACCOUNT_NAME="cssa915121f46f2ae0d374e7"
+
+az storage account show \
+  --name $STORAGE_ACCOUNT_NAME \
+  --resource-group $RESOURCE_GROUP
+
+az storage container create \
+  --name backups \
+  --account-name $STORAGE_ACCOUNT_NAME \
+  --auth-mode login
+
+# Grant managed identity access to storage account
+STORAGE_ID=$(az storage account show \
+  --name $STORAGE_ACCOUNT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Storage Blob Data Contributor" \
+  --assignee $IDENTITY_CLIENT_ID \
+  --scope $STORAGE_ID
+
+# Build and push backup image
+docker build -t iiusacr.azurecr.io/backup:latest ./backup
+az acr build --registry iiusacr --image backup:latest ./backup
 ```
 
 ## Phase 3: Production Enhancements
@@ -836,9 +1270,9 @@ on:
     branches: [main]
 
 env:
-  ACR_NAME: creditcardprocessor
-  AKS_NAME: your-aks-cluster
-  RESOURCE_GROUP: your-rg
+  ACR_NAME: iiusacr
+  AKS_NAME: dev-aks
+  RESOURCE_GROUP: rg_prod
 
 jobs:
   deploy:
@@ -889,15 +1323,15 @@ jobs:
 # Create action group for alerts
 az monitor action-group create \
   --name credit-card-alerts \
-  --resource-group your-rg \
+  --resource-group rg_prod \
   --short-name ccalerts \
   --email admin admin@company.com
 
 # Create metric alerts
 az monitor metrics alert create \
   --name high-cpu-backend \
-  --resource-group your-rg \
-  --scopes /subscriptions/.../resourceGroups/.../providers/Microsoft.ContainerService/managedClusters/your-aks-cluster \
+  --resource-group rg_prod \
+  --scopes /subscriptions/<subscription-id>/resourceGroups/rg_prod/providers/Microsoft.ContainerService/managedClusters/dev-aks \
   --condition "avg cpu percentage > 80" \
   --action credit-card-alerts
 ```
@@ -974,3 +1408,8 @@ curl -H "Authorization: Bearer <token>" https://creditcard.yourdomain.com/api/me
 3. Implement rate limiting with Azure API Management
 4. Add Redis for session caching
 5. Configure automated database backups to Azure Storage
+
+
+
+
+

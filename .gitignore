@@ -82,3 +82,6 @@ backups/
 
 # Windows reserved filenames
 nul
+
+# Local automation helpers (contains environment-specific secrets)
+scripts/
