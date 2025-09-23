@@ -1,3 +1,44 @@
+import { ref, onMounted, computed } from 'vue'
+import authService from '@/services/auth'
+
+export function useAuth() {
+  const user = ref(null)
+  const loading = ref(true)
+
+  onMounted(async () => {
+    try {
+      const account = await authService.initialize()
+      user.value = account
+    } catch (e) {
+      console.error('Auth initialization failed:', e)
+    } finally {
+      loading.value = false
+    }
+  })
+
+  const login = () => authService.login()
+  const logout = () => authService.logout()
+
+  const getAuthHeaders = async () => {
+    try {
+      const token = await authService.getToken()
+      return { Authorization: `Bearer ${token}` }
+    } catch (e) {
+      console.error('Failed to get token:', e)
+      return {}
+    }
+  }
+
+  return {
+    user: computed(() => user.value),
+    loading: computed(() => loading.value),
+    isAuthenticated: computed(() => !!user.value),
+    login,
+    logout,
+    getAuthHeaders
+  }
+}
+
 import { ref, computed, inject } from 'vue'
 import { useSessionStore } from '@/stores/session'
 

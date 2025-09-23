@@ -13,6 +13,7 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@azure/msal-browser": "^3.14.0",
     "@heroicons/vue": "^2.2.0",
     "axios": "^1.6.2",
     "pinia": "^2.1.7",

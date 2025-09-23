@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamav
+  namespace: credit-card-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clamav
+  template:
+    metadata:
+      labels:
+        app: clamav
+    spec:
+      containers:
+      - name: clamav
+        image: clamav/clamav:latest
+        ports:
+        - containerPort: 3310
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: clamav-data
+          mountPath: /var/lib/clamav
+      volumes:
+      - name: clamav-data
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamav
+  namespace: credit-card-processor
+spec:
+  selector:
+    app: clamav
+  ports:
+  - port: 3310
+    targetPort: 3310
+
+
