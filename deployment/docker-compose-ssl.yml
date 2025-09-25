@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: creditcard_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-creditcard}
+      POSTGRES_USER: ${DB_USER:-ccprocessor}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - creditcard_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ccprocessor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Don't expose ports externally for security
+    # Access only through Docker network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: creditcard_backend
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-ccprocessor}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-creditcard}
+      FILE_STORAGE_PATH: /app/data/uploads
+      EXPORT_PATH: /app/data/exports
+      LOG_PATH: /app/logs
+    volumes:
+      - uploads_data:/app/data/uploads
+      - exports_data:/app/data/exports
+      - logs_data:/app/logs
+    networks:
+      - creditcard_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Don't expose ports externally
+    # Access only through nginx
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://creditcard.company.local}
+        - VITE_WS_URL=${VITE_WS_URL:-wss://creditcard.company.local/ws}
+    container_name: creditcard_frontend
+    restart: unless-stopped
+    volumes:
+      - frontend_dist:/usr/share/nginx/html
+    networks:
+      - creditcard_network
+    depends_on:
+      - backend
+    # Don't expose ports externally
+    # Served through main nginx
+
+  nginx:
+    image: nginx:alpine
+    container_name: creditcard_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-ssl.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+      - ./nginx/logs:/var/log/nginx
+      # For Let's Encrypt challenges
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    networks:
+      - creditcard_network
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "https://localhost/health", "--no-check-certificate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Certbot for Let's Encrypt certificates
+  # Uncomment if using Let's Encrypt instead of internal CA
+  # certbot:
+  #   image: certbot/certbot
+  #   container_name: creditcard_certbot
+  #   volumes:
+  #     - ./certbot/www:/var/www/certbot
+  #     - ./certbot/conf:/etc/letsencrypt
+  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+  #   networks:
+  #     - creditcard_network
+
+networks:
+  creditcard_network:
+    name: creditcard_network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+    name: creditcard_postgres_data
+  uploads_data:
+    name: creditcard_uploads
+  exports_data:
+    name: creditcard_exports
+  logs_data:
+    name: creditcard_logs
+  frontend_dist:
+    name: creditcard_frontend_dist
